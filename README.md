@@ -571,4 +571,4 @@ mkdir -p jamba/results/recheck
 python utils/extract_answer.py --directory jamba/results/recheck
 ```
 
-用于论文复现时，随结果记录仓库提交、模型权重版本、评测划分、准确的 `config.json` 改动、推理与训练参数，以及原始结果文件。第 2 步的跨数据集示例和小样本用于验证流程。复现论文数值时应使用与论文一致的留出题及消融设置。
+每次评测完成后，随结果记录仓库提交、模型权重版本、评测数据划分、`config.json` 的具体改动，以及推理和训练参数。保留原始结果文件，以便核对各组的准确率。

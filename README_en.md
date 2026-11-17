@@ -339,4 +339,4 @@ mkdir -p jamba/results/recheck
 python utils/extract_answer.py --directory jamba/results/recheck
 ```
 
-For a paper result, record the repository commit, model revision, held-out split, ablation configuration changes, training and inference settings, and raw outputs. Use the paper's exact evaluation split and configuration to reproduce reported scores.
+For each evaluation, record the repository commit, model revision, evaluation split, exact changes to `config.json`, and inference and training settings. Keep the original output files so you can verify the accuracy for each group.
