@@ -1,589 +1,342 @@
 # TRUSS-Med: Medical Question Answering via Transformers, Retrieval, and Unified State Space Models
 
-Jamba Model Debugging Guide
+TRUSS-Med provides Jamba 1.6 inference, LoRA fine-tuning, and model ablation for medical multiple-choice question answering. [中文 README](README.md)
 
-> This document follows the original operating guide. The MedQA data, data-processing code, and `dataset_info.json` under `data/` are reused from the [reference project's data directory](https://github.com/julienamaury/Medical-Answering-Model-202410/tree/2ce178140e0aab1cbe56691f28bbee00c3f09294/data), while the MedMCQA data comes from this project's original experiment directory. Only cache files and directories such as `.DS_Store`, `__pycache__`, and `.ipynb_checkpoints` were excluded during copying. Part 2 describes the Jamba procedures used in this project.
+Run the commands from the cloned repository root in the same Bash terminal. Section 2 provides prepared datasets for a first run. Follow Sections 4, 6, 7, and 8 to check the Mini baseline workflow. Sections 3 and 5 cover dataset reconstruction and ablation.
 
-# 1. Dataset Construction
+## 1. Environment Setup
 
-## Project Environment and Dependencies
+The reference machine runs Ubuntu 22.04 LTS with eight NVIDIA A800 GPUs. The table records this project's resource allocation per instance.
 
-The project primarily uses the following conda environment on Alibaba Cloud:
-```bash
-conda activate llama_factory
-```
-See [requirements.txt](requirements.txt) for the complete dependency list and versions. The following version table records the original dataset-construction environment, which differs from the Jamba environment described in Part 2.
+| Task | CPU cores | System RAM | GPUs |
+| --- | ---: | ---: | ---: |
+| Jamba Mini 1.6 inference and LoRA | 16 | 120 GB | 2 A800s |
+| Jamba Large 1.6 inference | 64 | 480 GB | 8 A800s |
 
-### Hardware and System-Level Driver Requirements
+AI21's reference uses two GPUs with 80 GB of VRAM each for Mini BF16 inference, about 130 GB of aggregate VRAM for its BF16 LoRA example, and eight 80 GB GPUs with `experts_int8` for Large inference. Check the visible GPU count and memory on the target host. [Mini model card](https://huggingface.co/ai21labs/AI21-Jamba-Mini-1.6) · [Mini LoRA example](https://huggingface.co/ai21labs/AI21-Jamba-Mini-1.6/blob/14ea3d665a1f68c74f3a7cadaa32ebc84f352308/README.md#lora-example) · [Large model card](https://huggingface.co/ai21labs/AI21-Jamba-Large-1.6)
 
-The hardware and driver requirements are as follows:
-| Software/Hardware        | Version/Configuration     | Notes   |
-| ------------ | -------    | ------- |
-| Operating system       | Ubuntu 20.04.1 LTS |    |
-| CPU       | Intel(R) Xeon(R) Gold 6338 CPU @ 2.00GHz | 2 CPUs |
-| Memory       |  Samsung, DRAM, 2933 MT/s, 64 GB        | 16 × 64 GB modules, 1,024 GB total      |
-| GPU       | A100-SXM4-80GB | 8-GPU cluster; each training/inference task uses 1 GPU      |
-| NVIDIA Driver | 535.104.05 | NVIDIA-Linux-x86_64-535.104.05.run; administrator installation required |
-| CUDA       | 12.2         | cuda_12.2.2_535.104.05_linux.run; administrator installation required |
-| cuDNN       | 8.9.2.26 | cudnn-linux-x86_64-8.9.2.26_cuda12-archive.tar.xz; administrator installation required |
-| NCCL  | 2.18.3 | nccl_2.18.3-1+cuda12.2_x86_64.txz; administrator installation required |
-
-### Package Version Requirements
-
-The core package versions are as follows:
-| Package        | Version     | Notes   |
-| :------------ | :-------   | :------- |
-| Python       | 3.10.14   | Required by this project   |
-| PyTorch        | 2.3.0     | Required by this project    |
-| Transformers | 4.40.2    | Required by this project    |
-| Datasets     | 2.19.1    | Required by this project    |
-| Accelerate   | 0.30.0    | Required by this project    |
-| PEFT         | 0.10.0    | Required by this project    |
-| TRL          | 0.8.6     | Used for RLHF and not directly used in this project, but required by the llmtuner library |
-| DeepSpeed    | 0.14.0    | Required by this project |
-| bitsandbytes | 0.43.1    | Required by this project |
-| FlashAttention   | 2.5.8     | Required by this project. You may need to run ```pip install flash-attn==2.5.8``` separately. Installation is time-consuming, may fail, and can be difficult.  |
-| vLLM         | 0.4.2     | Required by this project and used as the core deployment library. You may need to run ```pip install vllm==0.4.2``` separately. Installation is time-consuming, may fail, and can be difficult. See the [vLLM installation guide](https://docs.vllm.ai/en/latest/getting_started/installation.html). |
-| llmtuner     | 0.7.1.dev0 | **Required by this project and used as the core training library. Installation may require cloning the [LLaMA-Factory repository](https://github.com/hiyouga/LLaMA-Factory) with Git.** You may also consult this [installation tutorial](https://zhuanlan.zhihu.com/p/695287607). |
-
-Official Jamba 1.6 models:
-* [AI21 Jamba Mini 1.6](https://huggingface.co/ai21labs/AI21-Jamba-Mini-1.6)
-* [AI21 Jamba Large 1.6](https://huggingface.co/ai21labs/AI21-Jamba-Large-1.6)
-
-When running a Jamba script, `<model_name>` can be one of the Hugging Face model IDs above or an absolute path to a downloaded local model directory.
-
-### Environment Variables for Large Language Model APIs
-The components that call large language models such as gpt-4-1106-preview and KimiChat depend on [data/MedQA/utils/MultiProcessingLLM](data/MedQA/utils/MultiProcessingLLM).
-You can register with [Moonshot AI](https://platform.moonshot.cn) or [API2D](https://api2d.com), request an API credential, and use the corresponding LLM service.
-
-This section primarily applies when calling the KimiChat API. Configure the API credentials for the large language models you intend to use.
-Before use, configure the environment variables as follows:
-* Configure environment variables
-```bash
-vim ~/.bashrc
-```
-Add the following lines and save the file:
+Set the environment names once. Use `conda env list` to check the names if you are using existing environments.
 
 ```bash
-# Set the api_key variables for the ChatGPT services provided through https://portal.azure.com
-# https://zhishenggpt.openai.azure.com/
-export GPT35_AZURE_OPENAI_KEY='xxxx'
-# https://zhishenggpt40.openai.azure.com/
-export GPT4_AZURE_OPENAI_KEY='xxxx'
-
-# https://openai.api2d.net/v1
-export API2D_OPENAI_KEY='xxxx'
-
-# https://dev.iai007.cloud/ai/api/v1
-export HEFEI_OPENAI_KEY='xxxx'
-
-# https://platform.moonshot.cn/console/api-keys
-export KIMI_OPENAI_KEY='xxxx'
-```
-Then reload the environment configuration:
-```bash
-source ~/.bashrc
+TRUSS_DATA_ENV="${TRUSS_DATA_ENV:-truss_data_env}"
+TRUSS_JAMBA_ENV="${TRUSS_JAMBA_ENV:-jamba_env}"
 ```
 
-
-### Downloading Large Language Model Weights (Recommended)
-We recommend downloading large language models from [https://hf-mirror.com/](https://hf-mirror.com/). Follow **Method 3: Use hfd** for stable, resumable downloads. An example is provided below:
-* Configure the environment variable
-```bash
-vim ~/.bashrc
-```
-Add the following line and save the file:
-```bash
-export HF_ENDPOINT=https://hf-mirror.com
-```
-Then reload the environment configuration:
-```bash
-source ~/.bashrc
-```
-
-* Download the hfd tool
+Install Jamba prerequisites on a Linux x86_64 CUDA host. The example uses Python 3.10, PyTorch 2.5.1 with CUDA 12.4, and vLLM 0.6.5. The reference driver for CUDA 12.4 Update 1 is 550.54.15 or newer. [CUDA driver compatibility](https://docs.nvidia.com/cuda/archive/12.4.1/cuda-toolkit-release-notes/index.html) · [vLLM CUDA requirements](https://github.com/vllm-project/vllm/blob/v0.6.5/requirements-cuda.txt)
 
 ```bash
-cd <path_to_your_model_storage_directory>
-wget https://hf-mirror.com/hfd/hfd.sh
-chmod a+x hfd.sh
+conda create -n "$TRUSS_JAMBA_ENV" python=3.10 -y
+conda activate "$TRUSS_JAMBA_ENV"
+python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+python -m pip install vllm==0.6.5 transformers==4.46.3 trl==0.12.2 \
+    datasets==3.1.0 accelerate==1.1.1 peft==0.13.2 huggingface-hub==0.26.5 \
+    pandas==2.2.2 openpyxl==3.1.2 tqdm==4.67.1 openai==1.58.1 httpx==0.27.2
+python -m pip check
+python -c 'import torch, vllm; from trl import SFTConfig, SFTTrainer; print(torch.__version__, torch.version.cuda); assert torch.cuda.is_available()'
 ```
 
-* Run the download commands
-```bash
-cd <path_to_your_model_storage_directory>
-./hfd.sh shenzhi-wang/Llama3-8B-Chinese-Chat --tool aria2c -x 4
-./hfd.sh Qwen/Qwen1.5-14B-Chat --tool aria2c -x 4
-```
-
-
-## MedQA Dataset
-* Dataset source: [https://github.com/jind11/MedQA](https://github.com/jind11/MedQA)
-* Download link: [https://drive.google.com/file/d/1ImYUSLk9JbgHXOemfvyiDiirluZHPeQw/view?usp=sharing](https://drive.google.com/file/d/1ImYUSLk9JbgHXOemfvyiDiirluZHPeQw/view?usp=sharing)
-* Chinese introduction: [https://zhuanlan.zhihu.com/p/679590312](https://zhuanlan.zhihu.com/p/679590312)
-
-
-### MedMCQA Dataset
-
-* Dataset source: [MedMCQA](https://github.com/medmcqa/medmcqa)
-* Download link: [Official dataset download](https://drive.google.com/uc?export=download&id=15VkJdq5eyWIkfb_aoD3oS8i4tScbHYky)
-* Large-file storage: `data/MedMCQA/data/MedMCQA_train.json` and `data/MedMCQA/data/train.json` are managed with Git LFS. If they are not downloaded automatically after cloning, run `git lfs pull`.
-
-## Dataset Preprocessing
-
-“Completed” means that the step was completed in the original experiment. This repository includes the raw data, processing code, and example outputs required by the following steps. To rebuild the dataset, run the original procedure below from the project root.
-
-### Convert TXT Files to JSON (Completed; No Need to Repeat)
-```bash
-conda activate llama_factory
-cd ./data/MedQA/utils
-
-# Convert TXT files to JSON
-python -u txt2json.py --input_txt_dir '../data_clean/textbooks/zh_paragraph' --output_json_dir '../data_clean/textbooks/zh_paragraph_json' --max_knowledge_len 1800 --language_type chinese --min_knowledge_len 5 --do_chunk
-python -u txt2json.py --input_txt_dir '../data_clean/textbooks/zh_sentence' --output_json_dir '../data_clean/textbooks/zh_sentence_json' --max_knowledge_len 1800 --language_type chinese --min_knowledge_len 5 --do_chunk
-python -u txt2json.py --input_txt_dir '../data_clean/textbooks/en' --output_json_dir '../data_clean/textbooks/en_json' --max_knowledge_len 1800 --language_type english --min_knowledge_len 5 --do_chunk
-```
-
-### Read and Vectorize JSON Files (Completed; No Need to Repeat)
+Use the following checks with a new or existing Jamba environment.
 
 ```bash
-# Convert JSON files into vectors
-python -u vector_store.py --input_json_dir '../data_clean/textbooks/zh_sentence_json' --store_top_path '../data_clean/vector_stores/zh_sentence'
-python -u vector_store.py --input_json_dir '../data_clean/textbooks/zh_paragraph_json' --store_top_path '../data_clean/vector_stores/zh_paragraph'
-python -u vector_store.py --input_json_dir '../data_clean/textbooks/en_json' --store_top_path '../data_clean/vector_stores/en'
+conda activate "$TRUSS_JAMBA_ENV"
+nvidia-smi --query-gpu=index,name,memory.total,driver_version --format=csv
+python -m pip show torch vllm transformers trl peft
+python -m pip check
 ```
 
-### Retrieve Knowledge for the Training and Test Sets and Build the Standard Instruction Dataset (Completed; No Need to Repeat)
-
-* The ```--device_ids``` parameter specifies the GPUs to use. If only one GPU is available, set ```--device_ids="0"``` and ```--num_process=1```.
-* The ```--query_key_name``` parameter specifies the retrieval query. Use `"question"` to retrieve with the question alone, or `"question_with_options"` to retrieve with the question and answer options concatenated. The final configuration uses `"question_with_options"`.
-
-* Before running retrieval, open [data/MedQA/utils/config.py](data/MedQA/utils/config.py) and set `"model_path"` to the actual path of the retrieval embedding model on the server.
-
+If the model configuration enables `use_mamba_kernels`, install the matching wheels before running LoRA. These wheels target the Python 3.10 and PyTorch 2.5 CUDA 12 configuration above.
 
 ```bash
-conda activate llama_factory
-cd ./data/MedQA/utils
-
-# Retrieve knowledge for JSON files
-# Chinese dataset—retrieve using "question" only
-# Training set
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/Mainland/train.jsonl" \
-    --embedding_model_name="stella-base-zh-v2" \
-    --store_path="../data_clean/vector_stores/zh_paragraph" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/train" \
-    --output_json_file="train.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question"
-
-# Validation set
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/Mainland/dev.jsonl" \
-    --embedding_model_name="stella-base-zh-v2" \
-    --store_path="../data_clean/vector_stores/zh_paragraph" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/dev" \
-    --output_json_file="dev.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question"
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/Mainland/test.jsonl" \
-    --embedding_model_name="stella-base-zh-v2" \
-    --store_path="../data_clean/vector_stores/zh_paragraph" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/test" \
-    --output_json_file="test.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question"
-
-
-# Chinese dataset—retrieve using "question_with_options"
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/Mainland/train.jsonl" \
-    --embedding_model_name="stella-base-zh-v2" \
-    --store_path="../data_clean/vector_stores/zh_paragraph" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/train" \
-    --output_json_file="train.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question_with_options"
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/Mainland/dev.jsonl" \
-    --embedding_model_name="stella-base-zh-v2" \
-    --store_path="../data_clean/vector_stores/zh_paragraph" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/dev" \
-    --output_json_file="dev.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question_with_options"
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/Mainland/test.jsonl" \
-    --embedding_model_name="stella-base-zh-v2" \
-    --store_path="../data_clean/vector_stores/zh_paragraph" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/test" \
-    --output_json_file="test.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question_with_options"
-
-
-# English dataset—retrieve using "question" only
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/US/train.jsonl" \
-    --embedding_model_name="stella-base-en-v2" \
-    --store_path="../data_clean/vector_stores/en" \
-    --output_json_dir="../data_clean/questions_with_knowledge/US/train" \
-    --output_json_file="train.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question"
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/US/dev.jsonl" \
-    --embedding_model_name="stella-base-en-v2" \
-    --store_path="../data_clean/vector_stores/en" \
-    --output_json_dir="../data_clean/questions_with_knowledge/US/dev" \
-    --output_json_file="dev.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question"
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/US/test.jsonl" \
-    --embedding_model_name="stella-base-en-v2" \
-    --store_path="../data_clean/vector_stores/en" \
-    --output_json_dir="../data_clean/questions_with_knowledge/US/test" \
-    --output_json_file="test.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question"
-
-
-# English dataset—retrieve using "question_with_options" only
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/US/train.jsonl" \
-    --embedding_model_name="stella-base-en-v2" \
-    --store_path="../data_clean/vector_stores/en" \
-    --output_json_dir="../data_clean/questions_with_knowledge/US/train" \
-    --output_json_file="train.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question_with_options"
-
-
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/US/dev.jsonl" \
-    --embedding_model_name="stella-base-en-v2" \
-    --store_path="../data_clean/vector_stores/en" \
-    --output_json_dir="../data_clean/questions_with_knowledge/US/dev" \
-    --output_json_file="dev.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question_with_options"
-
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/US/test.jsonl" \
-    --embedding_model_name="stella-base-en-v2" \
-    --store_path="../data_clean/vector_stores/en" \
-    --output_json_dir="../data_clean/questions_with_knowledge/US/test" \
-    --output_json_file="test.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question_with_options"
+python -m pip install \
+    'https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.5.0.post8/causal_conv1d-1.5.0.post8+cu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl' \
+    'https://github.com/state-spaces/mamba/releases/download/v2.2.4/mamba_ssm-2.2.4+cu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl'
+python -c 'import causal_conv1d, mamba_ssm'
 ```
 
-
-### Generate Chinese Dataset Text with Explanations (Completed; No Need to Repeat)
+To rebuild data in Section 3, create the separate preprocessing environment below. FAISS runs on CPU and the Stella embedding models use CUDA. The original experiment environment is recorded in [requirements.txt](requirements.txt).
 
 ```bash
-conda activate llama_factory
-cd ./data/MedQA/utils
-
-# Training set
-python ./MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_json_data.py --do_check \
-    --num_process=30 \
-    --model_name="moonshot-v1-32k_kimi" \
-    --prompt_config_path="./MultiProcessingLLM/prompt_config_of_generate_explain.json" \
-    --use_load_raw_json_data_with_process \
-    --input_json_data_path="../data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train.json" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train_with_explain_using_moonshot-v1-32k_kimi" \
-    --list_placeholder="list_placeholder" \
-    --llm_output_key="chatgpt_explain" \
-    --index_key_name="id" \
-    --temperature=0.7 \
-    --max_tokens=4096 \
-    --top_p=0.95
-
-# Test set
-python ./MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_json_data.py --do_check \
-    --num_process=30 \
-    --model_name="moonshot-v1-32k_kimi" \
-    --prompt_config_path="./MultiProcessingLLM/prompt_config_of_generate_explain.json" \
-    --use_load_raw_json_data_with_process \
-    --input_json_data_path="../data_clean/questions_with_knowledge/Mainland/test/retrive_use_question_with_options/stella-base-zh-v2/test.json" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/test/retrive_use_question_with_options/stella-base-zh-v2/test_with_explain_using_moonshot-v1-32k_kimi" \
-    --list_placeholder="list_placeholder" \
-    --llm_output_key="chatgpt_explain" \
-    --index_key_name="id" \
-    --temperature=0.7 \
-    --max_tokens=4096 \
-    --top_p=0.95
-
-
-# Validation set
-python ./MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_json_data.py --do_check \
-    --num_process=30 \
-    --model_name="moonshot-v1-32k_kimi" \
-    --prompt_config_path="./MultiProcessingLLM/prompt_config_of_generate_explain.json" \
-    --use_load_raw_json_data_with_process \
-    --input_json_data_path="../data_clean/questions_with_knowledge/Mainland/dev/retrive_use_question_with_options/stella-base-zh-v2/dev.json" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/dev/retrive_use_question_with_options/stella-base-zh-v2/dev_with_explain_using_moonshot-v1-32k_kimi" \
-    --list_placeholder="list_placeholder" \
-    --llm_output_key="chatgpt_explain" \
-    --index_key_name="id" \
-    --temperature=0.7 \
-    --max_tokens=4096 \
-    --top_p=0.95
+conda create -n "$TRUSS_DATA_ENV" python=3.10 -y
+conda activate "$TRUSS_DATA_ENV"
+python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+python -m pip install transformers==4.46.3 huggingface-hub==0.26.5 \
+    langchain==0.2.0 langchain-community==0.2.0 sentence-transformers==2.7.0 \
+    faiss-cpu==1.8.0.post1 numpy==1.26.4 pydantic==2.7.1 tqdm==4.66.0 \
+    openai==1.58.1 httpx==0.27.2
+python -m pip check
 ```
 
-### Build the Standard Chinese Dataset (Completed; No Need to Repeat)
-```bash
-python format_json_dataset_for_training_llm.py \
-    --input_json_data_path="../data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train_with_explain_using_moonshot-v1-32k_kimi" \
-    --dataset_info_path="../../dataset_info.json" \
-    --dataset_name="RAG_MedQA_Mainland_train" \
-    --dataset_info_relative_dir="MedQA/" \
-    --output_json_data_dir="../" \
-    --do_register_dataset
+## 2. Datasets
 
-# Build the test set
-python format_json_dataset_for_training_llm.py \
-    --input_json_data_path="../data_clean/questions_with_knowledge/Mainland/test/retrive_use_question_with_options/stella-base-zh-v2/test_with_explain_using_moonshot-v1-32k_kimi" \
-    --dataset_info_path="../../dataset_info.json" \
-    --dataset_name="RAG_MedQA_Mainland_test" \
-    --dataset_info_relative_dir="MedQA/" \
-    --output_json_data_dir="../" \
-    --do_register_dataset
-```
+| Dataset | Prepared LoRA input | Examples |
+| --- | --- | ---: |
+| MedQA | [RAG_MedQA_Mainland_train_500(example).json](data/MedQA/RAG_MedQA_Mainland_train_500%28example%29.json) | 500 |
+| MedMCQA | [Med_MCQA_knowledge_test_train.json](data/MedMCQA/result/Med_MCQA_knowledge_test_train.json) | 300 |
 
-# 2. Jamba Model Inference and Fine-Tuning Guide
+Every training example has `system`, `user`, and `assistant` messages, including an explanation in the assistant message. The JSON files contain no attribution for the model that generated the existing explanations.
 
-## I. Overview
-
-This guide covers inference with the large and mini versions of the Jamba model, fine-tuning of Jamba mini, and inference with a fine-tuned Jamba mini model, providing comprehensive guidance for each procedure.
-
-## II. Environment Setup
-
-(1) Dependency Installation
-
-### Sugon Cloud Container Configuration
-
-The hardware and driver requirements are as follows:
-
-jamba mini (inference and fine-tuning)
-16 cores; 120.0 GB memory; 2 accelerators | single instance
-
-jamba large
-64 cores; 480.0 GB memory; 8 accelerators | single instance
-
-### Package Version Requirements
- Sugon Cloud image name (inference and fine-tuning)
- __jupyterlab-pytorch_0707:2.2.0-py3.10-cuda12.1-ubuntu22.04-devel_0707__
-
-The image already includes the conda environment:
-```bash
-conda activate jamba
-```
-
-(2) Path Reference
-The original server source directory now corresponds to the repository's `jamba/` directory.
-
-The repository's four model scripts are located in `jamba/`. Enter this directory and create the results directory before running the commands below:
+For a workflow check, use the MedQA training example and the [MedMCQA evaluation sample](data/MedMCQA/result/Med_MCQA_test.json). The scripts resolve dataset arguments relative to `data/`. Inference filters out assistant messages and scores predictions using `answer_idx`.
 
 ```bash
-cd jamba
-mkdir -p results
+TRAIN_NAME='RAG_MedQA_Mainland_train_500(example)'
+TRAIN_DATA="MedQA/$TRAIN_NAME.json"
+EVAL_DATA='MedMCQA/result/Med_MCQA_test.json'
 ```
 
-The model can be supplied as a Hugging Face model ID or an absolute local model path. The dataset root is the repository's `data/` directory, and the fine-tuning output root is `jamba-finetune-data/`.
+For a MedMCQA training run, set `TRAIN_NAME=Med_MCQA_knowledge_test_train` and `TRAIN_DATA=MedMCQA/result/Med_MCQA_knowledge_test_train.json`. Use a separate held-out evaluation file. Both bundled 300-question MedMCQA evaluation variants overlap with this training file.
 
-This directory contains the following key files:
+### Small-sample verification
+
+With the variables above set to the MedQA training and MedMCQA evaluation examples, create a four-example training set and a three-example evaluation set. Then follow the Mini baseline commands in Sections 4, 6, 7, and 8. Loading the model still requires the standard GPU configuration.
+
 ```bash
-jamba16large_inference.py
-jamba16mini_finetune.py
-jamba16mini_inference.py
-jamba16mini_inference_by_finetune.py
+python - "$TRAIN_DATA" "$EVAL_DATA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+data = Path("data")
+output = data / "local"
+output.mkdir(exist_ok=True)
+for source, target, count in zip(sys.argv[1:], ("smoke_train.json", "smoke_eval.json"), (4, 3)):
+    samples = json.loads((data / source).read_text(encoding="utf-8"))
+    (output / target).write_text(json.dumps(samples[:count], ensure_ascii=False), encoding="utf-8")
+PY
+TRAIN_NAME=smoke_train
+TRAIN_DATA=local/smoke_train.json
+EVAL_DATA=local/smoke_eval.json
 ```
 
-The repository's dataset root is `data/`. The data under `data/MedQA` and `data/MedMCQA` can be used directly; scripts accept a path relative to `data/` or an absolute dataset file path.
-The directory contains:
-**MedQA Directory**
+The raw datasets are described by their upstream projects. The two large raw MedMCQA training files, `data/MedMCQA/data/MedMCQA_train.json` and `data/MedMCQA/data/train.json`, use Git LFS. If you need them, run `git lfs install` and `git lfs pull` in the clone. The prepared examples above are standard Git files. [MedQA](https://github.com/jind11/MedQA) · [MedMCQA](https://github.com/medmcqa/medmcqa)
+
+## 3. Dataset Preprocessing
+
+Set up the training and held-out splits before retrieval. MedQA includes UTF-8 textbook files and their converted JSON versions. Use `txt2json.py` for new text, `vector_store.py` to build indexes, and `generate_question_with_knowledges.py` to retrieve passages for each split. [MedQA utilities](data/MedQA/utils)
+
+Activate the data environment before running this section.
+
 ```bash
-data/MedQA/RAG_MedQA_Mainland_train_500(example).json: training examples containing messages and answer_idx
-data/MedQA/data_clean/questions: raw MedQA question data
-data/MedQA/data_clean/textbooks: raw medical textbook text and converted JSON data
+conda activate "$TRUSS_DATA_ENV"
 ```
-**MedMCQA Directory**
+
+### Text conversion and vector indexes
+
+The following commands convert the bundled textbook files to JSON. If the converted files are already available, start with the Stella downloads.
+
 ```bash
-data/MedMCQA/data: raw and converted MedMCQA data
-data/MedMCQA/result: standardized MedMCQA datasets for training and inference
-data/MedMCQA/utils: auxiliary files for MedMCQA data processing
+(
+    cd data/MedQA/utils || exit
+    python -u txt2json.py --input_txt_dir '../data_clean/textbooks/zh_paragraph' --output_json_dir '../data_clean/textbooks/zh_paragraph_json' --max_knowledge_len 1800 --language_type chinese --min_knowledge_len 5 --do_chunk
+    python -u txt2json.py --input_txt_dir '../data_clean/textbooks/zh_sentence' --output_json_dir '../data_clean/textbooks/zh_sentence_json' --max_knowledge_len 1800 --language_type chinese --min_knowledge_len 5 --do_chunk
+    python -u txt2json.py --input_txt_dir '../data_clean/textbooks/en' --output_json_dir '../data_clean/textbooks/en_json' --max_knowledge_len 1800 --language_type english --min_knowledge_len 5 --do_chunk
+)
 ```
 
+The embedding configuration resolves both model directories under `models/` in the clone. The indexing script builds indexes for both Stella models. [Embedding configuration](data/MedQA/utils/config.py)
 
-## III. Jamba 16 Large Inference
-
-(1) Code File
 ```bash
-jamba16large_inference.py
+huggingface-cli download infgrad/stella-base-zh-v2 --local-dir models/stella-base-zh-v2
+huggingface-cli download infgrad/stella-base-en-v2 --local-dir models/stella-base-en-v2
 ```
-(2) Procedure
-Configure the parameters: verify the model ID or local model path, dataset path, `temperature`, `top_k`, `top_p`, and other parameters.
-Run the command:
+
 ```bash
-python jamba16large_inference.py <model_name> <dataset_filenames>
+(
+    cd data/MedQA/utils || exit
+    python -u vector_store.py --input_json_dir '../data_clean/textbooks/zh_sentence_json' --store_top_path '../data_clean/vector_stores/zh_sentence'
+    python -u vector_store.py --input_json_dir '../data_clean/textbooks/zh_paragraph_json' --store_top_path '../data_clean/vector_stores/zh_paragraph'
+    python -u vector_store.py --input_json_dir '../data_clean/textbooks/en_json' --store_top_path '../data_clean/vector_stores/en'
+)
 ```
 
-(3) Parameter Descriptions
-`<model_name>`: Hugging Face model ID or local model path, for example, ai21labs/AI21-Jamba-Large-1.6.
-`<dataset_filenames>`: dataset paths relative to `data/` or absolute paths. Multiple paths can be supplied and separated by spaces.
-(4) Example
+### Knowledge retrieval
+
+The examples below use the question and answer options for retrieval in each Mainland split. With one visible GPU, set `--device_ids=0` and `--num_process=1`. See the [Chinese README retrieval examples](README.md#知识检索与增强) for the US dataset and question-only queries.
+
 ```bash
-python jamba16large_inference.py ai21labs/AI21-Jamba-Large-1.6 "$(cd .. && pwd)/data/MedQA/RAG_MedQA_Mainland_train_500(example).json"
-python jamba16large_inference.py ai21labs/AI21-Jamba-Large-1.6 "$(cd .. && pwd)/data/MedMCQA/result/Med_MCQA_test.json"
+(
+    cd data/MedQA/utils || exit
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/Mainland/train.jsonl" \
+        --embedding_model_name="stella-base-zh-v2" \
+        --store_path="../data_clean/vector_stores/zh_paragraph" \
+        --output_json_dir="../data_clean/questions_with_knowledge/Mainland/train" \
+        --output_json_file="train.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question_with_options"
+
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/Mainland/dev.jsonl" \
+        --embedding_model_name="stella-base-zh-v2" \
+        --store_path="../data_clean/vector_stores/zh_paragraph" \
+        --output_json_dir="../data_clean/questions_with_knowledge/Mainland/dev" \
+        --output_json_file="dev.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question_with_options"
+
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/Mainland/test.jsonl" \
+        --embedding_model_name="stella-base-zh-v2" \
+        --store_path="../data_clean/vector_stores/zh_paragraph" \
+        --output_json_dir="../data_clean/questions_with_knowledge/Mainland/test" \
+        --output_json_file="test.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question_with_options"
+)
 ```
 
-## IV. Jamba 16 Mini Inference
+### Training explanations and dataset formatting
 
-(1) Code File
-jamba16mini_inference.py
-(2) Procedure
-Configure the parameters: verify the model ID or local model path, dataset path, `temperature`, `top_k`, `top_p`, and other parameters.
-Run the command:
+Enable a Doubao text model in the Volcengine Ark console and obtain its model or endpoint ID and API key. Set the two environment variables in the same terminal and run a one-message connectivity check. [Ark quick start](https://docs.volcengine.com/docs/ark/quick-start?lang=en) · [OpenAI-compatible API](https://docs.volcengine.com/docs/ark/compatible-with-openai-sdk?lang=en)
+
 ```bash
-python jamba16mini_inference.py <model_name> <dataset_filenames>
+read -rsp 'Ark API key: ' ARK_API_KEY
+printf '\n'
+export ARK_API_KEY
+export ARK_MODEL_ID='replace with a Doubao model ID or ep- endpoint ID'
 ```
 
-(3) Parameter Descriptions
-`<model_name>`: Hugging Face model ID or local model path, for example, ai21labs/AI21-Jamba-Mini-1.6.
-`<dataset_filenames>`: dataset paths relative to `data/` or absolute paths. Multiple paths can be supplied and separated by spaces.
-(4) Example
 ```bash
-python jamba16mini_inference.py ai21labs/AI21-Jamba-Mini-1.6 "$(cd .. && pwd)/data/MedQA/RAG_MedQA_Mainland_train_500(example).json"
-python jamba16mini_inference.py ai21labs/AI21-Jamba-Mini-1.6 "$(cd .. && pwd)/data/MedMCQA/result/Med_MCQA_test.json"
+python - <<'PY'
+import os
+
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://ark.cn-beijing.volces.com/api/v3",
+    api_key=os.environ["ARK_API_KEY"],
+)
+response = client.chat.completions.create(
+    model=os.environ["ARK_MODEL_ID"],
+    messages=[{"role": "user", "content": "Reply with a short confirmation."}],
+)
+print(response.choices[0].message.content)
+PY
 ```
 
-## V. Jamba 16 Mini Fine-Tuning
+Obtain the training explanations from your Ark batch workflow. Join the explanations to the retrieved training examples by `id` and put each explanation in `chatgpt_explain`. Keep the existing metadata, retrieval passages, question and answer fields. The repository's existing batch client contains integrations such as Kimi. [Batch client](data/MedQA/utils/MultiProcessingLLM/openai_api_llm.py)
 
-(1) Code File
-jamba16mini_finetune.py
-(2) Procedure
-Configure the parameters: set the model name and dataset path through the command-line arguments.
-Run the command:
+Create `data/local/` and save the combined JSON array as `data/local/Mainland_train_with_doubao.json`. Format it for training and convert the retrieved test split with `--do_test`. That flag leaves the assistant response out of the evaluation conversation and retains the reference answer.
+
 ```bash
-python jamba16mini_finetune.py <model_name> <dataset_path>
+(
+    cd data/MedQA/utils || exit
+    python format_json_dataset_for_training_llm.py \
+        --input_json_data_path ../../local/Mainland_train_with_doubao.json \
+        --dataset_name RAG_MedQA_Mainland_train_doubao \
+        --output_json_data_dir ../../local
+    python format_json_dataset_for_training_llm.py \
+        --input_json_data_path ../data_clean/questions_with_knowledge/Mainland/test/retrive_use_question_with_options/stella-base-zh-v2/test.json \
+        --dataset_name RAG_MedQA_Mainland_eval \
+        --output_json_data_dir ../../local \
+        --do_test
+)
 ```
 
-(3) Parameter Descriptions
-`<model_name>`: Hugging Face model ID or local model path, for example, ai21labs/AI21-Jamba-Mini-1.6.
-`<dataset_path>`: dataset path relative to `data/`, for example, `MedQA/RAG_MedQA_Mainland_train_500(example).json`; an absolute path is also accepted.
-(4) Example
 ```bash
-python jamba16mini_finetune.py ai21labs/AI21-Jamba-Mini-1.6 "$(cd .. && pwd)/data/MedQA/RAG_MedQA_Mainland_train_500(example).json"
-python jamba16mini_finetune.py ai21labs/AI21-Jamba-Mini-1.6 "$(cd .. && pwd)/data/MedMCQA/result/Med_MCQA_knowledge_test_train.json"
+TRAIN_NAME=RAG_MedQA_Mainland_train_doubao
+TRAIN_DATA="local/$TRAIN_NAME.json"
+EVAL_DATA=local/RAG_MedQA_Mainland_eval.json
 ```
 
-(5) Fine-Tuning Results
-Results are saved to `jamba-finetune-data/` in the repository root.
-## VI. Inference with a Fine-Tuned Jamba 16 Mini Model
+## 4. Model Download
 
-(1) Code File
+Accept the model's access terms on Hugging Face and authenticate with a read token. Allow disk space for the model weights, an ablation copy, and merged LoRA weights. [Mini](https://huggingface.co/ai21labs/AI21-Jamba-Mini-1.6) · [Large](https://huggingface.co/ai21labs/AI21-Jamba-Large-1.6)
+
 ```bash
-jamba16mini_inference_by_finetune.py
+conda activate "$TRUSS_JAMBA_ENV"
+huggingface-cli login
+MINI_MODEL=models/AI21-Jamba-Mini-1.6
+huggingface-cli download ai21labs/AI21-Jamba-Mini-1.6 --local-dir "$MINI_MODEL"
+test -f "$MINI_MODEL/config.json"
 ```
-(2) Procedure
-Configure the parameters: verify the model ID or local model path, dataset path, `temperature`, `top_k`, `top_p`, `peft_relative_path`, and other parameters.
-Run the command:
+
+## 5. Model Ablation
+
+Copy the downloaded Mini directory and apply the experiment's `config.json` changes to the copy. Record the original and changed values and use weights compatible with the configuration in each group. Keep training inputs, held-out questions, and inference settings fixed across groups.
+
 ```bash
-python jamba16mini_inference_by_finetune.py <model_name> <dataset_filenames> <peft_relative_path>
+ABLATION_MODEL=models/AI21-Jamba-Mini-1.6-ablation
+# Run once to create the copy, then edit its config.json.
+test ! -e "$ABLATION_MODEL" && cp -a "$MINI_MODEL" "$ABLATION_MODEL"
 ```
 
-(3) Parameter Descriptions
-`<model_name>`: Hugging Face model ID or local model path, for example, ai21labs/AI21-Jamba-Mini-1.6.
-`<dataset_filenames>`: dataset paths relative to `data/` or absolute paths. Multiple paths can be supplied and separated by spaces.
-`<peft_relative_path>`: relative path to the PEFT model. The fixed root path is `jamba-finetune-data/` in the repository root, so only the relative path is required, for example, AI21-Jamba-Mini-1.6/Med_MCQA_knowledge_test_train/checkpoint-300.
-(4) Example
+## 6. Baseline Inference
+
+The Mini baseline uses two visible GPUs.
+
 ```bash
-python jamba16mini_inference_by_finetune.py ai21labs/AI21-Jamba-Mini-1.6 "$(cd .. && pwd)/data/MedQA/RAG_MedQA_Mainland_train_500(example).json" "AI21-Jamba-Mini-1.6/RAG_MedQA_Mainland_train_500(example)/checkpoint-300"
-python jamba16mini_inference_by_finetune.py ai21labs/AI21-Jamba-Mini-1.6 "$(cd .. && pwd)/data/MedMCQA/result/Med_MCQA_knowledge_test.json" "AI21-Jamba-Mini-1.6/Med_MCQA_knowledge_test_train/checkpoint-300"
+export CUDA_VISIBLE_DEVICES=0,1
+mkdir -p jamba/results
+
+(cd jamba && python jamba16mini_inference.py "../$MINI_MODEL" "$EVAL_DATA")
 ```
 
-(5) Notes
-Before inference, the code merges the original model, such as ai21labs/AI21-Jamba-Mini-1.6, with the fine-tuned LoRA weights into the `merged` directory under `peft_relative_path`.
+After preparing the alternate model configuration in Section 5, run it against the same evaluation file.
 
-## VII. Saving Results
-
-Inference results are saved to `results/` under the current working directory. When the commands above are followed, the directory is `jamba/results/`. The filename format is:
 ```bash
-jamba16<version>_inference_<related_information>_temperature<temperature_value>_topp<top_p_value>_topk<top_k_value>_<timestamp>.xlsx
+(cd jamba && python jamba16mini_inference.py "../$ABLATION_MODEL" "$EVAL_DATA")
 ```
 
-## VIII. Extracting Answers from Inference Results
+The Large script uses an eight-GPU `experts_int8` configuration. It can be run separately.
 
-Each inference script contains an `<extract_predicted_option_by_us>` function that extracts the answer from the model response.
-If a new model output format is encountered, add the corresponding expression to `<extract_predicted_option_by_us>`.
 ```bash
-extract_answer.py
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+LARGE_MODEL=models/AI21-Jamba-Large-1.6
+huggingface-cli download ai21labs/AI21-Jamba-Large-1.6 --local-dir "$LARGE_MODEL"
+(cd jamba && python jamba16large_inference.py "../$LARGE_MODEL" "$EVAL_DATA")
 ```
-This script reprocesses and extracts answers from model responses in result files (`.xlsx`). The original script overwrites the corresponding result files.
-Example:
-```bash
-cd ../utils
-python extract_answer.py --directory /path/to/your/directory
-```
-If `--directory` is omitted, the script processes the repository's `jamba/results/` directory by default.
 
-Adjust the parameters and paths in this guide to match the actual environment.
+## 7. LoRA Fine-tuning and Inference
+
+Run the same training file for the baseline and ablation groups. The adapter is written to `jamba-finetune-data/<model directory name>/<training file stem>/`. Check that the training log completes and that `adapter_config.json` and `adapter_model.safetensors` are present.
+
+```bash
+export CUDA_VISIBLE_DEVICES=0,1
+(cd jamba && python jamba16mini_finetune.py "../$MINI_MODEL" "$TRAIN_DATA")
+```
+
+Train the ablation group with the same input file.
+
+```bash
+(cd jamba && python jamba16mini_finetune.py "../$ABLATION_MODEL" "$TRAIN_DATA")
+```
+
+Use the relative adapter directory that the training step created. A periodic checkpoint can be selected by appending its actual name. This script creates and reuses a `merged/` directory under the selected adapter.
+
+```bash
+BASE_PEFT="$(basename "$MINI_MODEL")/$TRAIN_NAME"
+(cd jamba && python jamba16mini_inference_by_finetune.py "../$MINI_MODEL" "$EVAL_DATA" "$BASE_PEFT")
+```
+
+Use the ablation group's adapter for its inference run.
+
+```bash
+ABLATION_PEFT="$(basename "$ABLATION_MODEL")/$TRAIN_NAME"
+(cd jamba && python jamba16mini_inference_by_finetune.py "../$ABLATION_MODEL" "$EVAL_DATA" "$ABLATION_PEFT")
+```
+
+## 8. Evaluation Outputs
+
+Inference writes workbooks under `jamba/results/`. Check for a new workbook and the completion log. A workbook should contain three prediction rows for the small-sample check, or 300 for the full bundled MedMCQA evaluation example. Check the generated text and missing predicted options before comparing accuracy.
+
+To rerun option extraction, copy the relevant workbooks to `jamba/results/recheck/`. The utility overwrites the workbooks it processes. [Answer extraction](utils/extract_answer.py)
+
+```bash
+mkdir -p jamba/results/recheck
+# Copy the workbooks to jamba/results/recheck/ before running the utility.
+python utils/extract_answer.py --directory jamba/results/recheck
+```
+
+For a paper result, record the repository commit, model revision, held-out split, ablation configuration changes, training and inference settings, and raw outputs. Use the paper's exact evaluation split and configuration to reproduce reported scores.

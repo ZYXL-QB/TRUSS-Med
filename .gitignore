@@ -4,6 +4,11 @@
 /jamba/results/
 /jamba_results/
 /finetune_result/
+/jamba-finetune-data/*
+!/jamba-finetune-data/.gitkeep
+/data/MedQA/data_clean/vector_stores/
+/data/MedQA/data_clean/questions_with_knowledge/
+/data/local/
 checkpoint-*/
 merged/
 *.safetensors

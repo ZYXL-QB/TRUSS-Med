@@ -1,589 +1,574 @@
 # TRUSS-Med: Medical Question Answering via Transformers, Retrieval, and Unified State Space Models
 
-Jamba模型调试说明
+Jamba 1.6 医学选择题推理、LoRA 微调与模型配置消融。
 
-> 本文沿用原操作说明。`data/` 目录中的 MedQA 数据、数据处理代码及 `dataset_info.json` 复用自[参考项目的 data 目录](https://github.com/julienamaury/Medical-Answering-Model-202410/tree/2ce178140e0aab1cbe56691f28bbee00c3f09294/data)，MedMCQA 数据来自本项目原实验目录；复制时仅排除了 `.DS_Store`、`__pycache__` 和 `.ipynb_checkpoints` 等缓存文件。第二部分为本项目的 Jamba 操作步骤。
+[English README](README_en.md)
 
-# 1. 构建数据集
+> 本文沿用原操作说明。`data/` 目录中的 MedQA 数据、数据处理代码及 `dataset_info.json` 复用自[参考项目的 data 目录](https://github.com/julienamaury/Medical-Answering-Model-202410/tree/2ce178140e0aab1cbe56691f28bbee00c3f09294/data)，MedMCQA 数据来自本项目原实验目录；复制时仅排除了 `.DS_Store`、`__pycache__` 和 `.ipynb_checkpoints` 等缓存文件。
 
-## 项目环境依赖
+## 实验流程
 
-项目主要依赖于阿里云环境下conda环境
+从原始数据复现实验时，依次配置环境、选择数据并完成预处理，再获取模型、配置消融实验、运行推理和微调，最后核对评测结果。使用仓库里已经预处理的数据时，按[第 2 步](#2-数据集与知识来源)设置训练文件和评测文件，再进入第 4 步。使用自有题库和知识文档时，按第 2、3 步准备。
+
+克隆后进入包含本 README 的仓库根目录，在同一 Bash 终端中执行命令。代码、数据和模型路径都相对于这份克隆。首次验证可选用[小样本验证](#小样本验证)，按第 4、6、7、8 步检查模型下载、基础推理、LoRA 微调和结果输出。
+
+## 1. 实验环境配置
+
+数据预处理和 Jamba 使用两套 Conda 环境。以下命令在同一个终端中执行。已有环境时，用 `conda env list` 查看名称，并将对应变量设为实际名称。
+
 ```bash
-conda activate llama_factory
+TRUSS_DATA_ENV="${TRUSS_DATA_ENV:-truss_data_env}"
+TRUSS_JAMBA_ENV="${TRUSS_JAMBA_ENV:-jamba_env}"
 ```
-完整依赖及版本参考 [requirements.txt](requirements.txt)。以下版本表保留原数据构建环境记录，不等同于第二部分的 Jamba 环境。
+
+### 数据预处理环境
+
+重建数据集时，在 Ubuntu 22.04 x86_64 上创建数据预处理环境。使用仓库内已有的预处理数据时，直接配置 Jamba 环境。
+
+```bash
+conda create -n "$TRUSS_DATA_ENV" python=3.10 -y
+conda activate "$TRUSS_DATA_ENV"
+python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+python -m pip install transformers==4.46.3 huggingface-hub==0.26.5 \
+    langchain==0.2.0 langchain-community==0.2.0 sentence-transformers==2.7.0 \
+    faiss-cpu==1.8.0.post1 numpy==1.26.4 pydantic==2.7.1 tqdm==4.66.0 \
+    openai==1.58.1 httpx==0.27.2
+python -m pip check
+```
+
+向量索引使用 CPU 版 FAISS，Stella 嵌入和检索脚本使用 CUDA。[requirements.txt](requirements.txt) 记录历史实验环境。
 
 ### 硬件与系统级驱动依赖
 
-其中硬件与驱动依赖：
-| 软件包/硬件        | 版本号/配置     | 备注   |
-| ------------ | -------    | ------- |
-| 系统       | Ubuntu 20.04.1 LTS |    |
-| CPU       | Intel(R) Xeon(R) Gold 6338 CPU @ 2.00GHz | 2块 |
-| 内存       |  Samsung, DRAM, 2933 MT/s, 64 GB        | 16条64GB内存条，共计1024GB      |
-| GPU       | A100-SXM4-80GB | 8卡集群。每个训练/推理任务使用1卡      |
-| NVIDIA Driver | 535.104.05 | NVIDIA-Linux-x86_64-535.104.05.run，需要管理员安装 |
-| CUDA       | 12.2         | cuda_12.2.2_535.104.05_linux.run，需要管理员安装 |
-| cudnn       | 8.9.2.26 | cudnn-linux-x86_64-8.9.2.26_cuda12-archive.tar.xz，需要管理员安装 |
-| nccl  | 2.18.3 | nccl_2.18.3-1+cuda12.2_x86_64.txz，需要管理员安装 |
+本项目参考环境为 **Ubuntu 22.04 LTS、8 张 NVIDIA A800**。下表记录本项目的单实例资源分配。
+
+| 任务 | CPU 核心 | 系统内存 | GPU |
+| --- | ---: | ---: | ---: |
+| Jamba Mini 1.6 推理与微调 | 16 | 120.0 GB | 2 张 A800 |
+| Jamba Large 1.6 推理 | 64 | 480.0 GB | 8 张 A800 |
+
+AI21 的参考配置为 Mini 默认 BF16 推理使用 **2 张 80 GB GPU**，Mini BF16 LoRA 示例约需 **130 GB 总显存**，Large 在 **8 张 80 GB GPU** 上使用 `experts_int8`。运行前用 `nvidia-smi` 核对服务器实际可见的卡数、单卡显存和驱动版本。 [Mini 模型卡](https://huggingface.co/ai21labs/AI21-Jamba-Mini-1.6) · [Mini 1.6 LoRA 示例](https://huggingface.co/ai21labs/AI21-Jamba-Mini-1.6/blob/14ea3d665a1f68c74f3a7cadaa32ebc84f352308/README.md) · [Large 模型卡](https://huggingface.co/ai21labs/AI21-Jamba-Large-1.6)
+
+| 系统依赖 | 参考版本 | 说明 |
+| --- | --- | --- |
+| CUDA | 12.4 Update 1 | 采用 [vLLM 0.6.5 官方 Dockerfile](https://github.com/vllm-project/vllm/blob/v0.6.5/Dockerfile) 的 CUDA 版本。 |
+| NVIDIA Linux 驱动 | `>=550.54.15` | 按 [CUDA 12.4 Update 1 对应的 Linux x86_64 驱动版本](https://docs.nvidia.com/cuda/archive/12.4.1/cuda-toolkit-release-notes/index.html) 选取。 |
+| cuDNN、NCCL | 随 PyTorch CUDA 构建安装 | 使用与所选 PyTorch CUDA 构建一同分发的库。 |
 
 ### 软件包版本依赖
 
-其中，核心软件包版本：
-| 软件包        | 版本号     | 备注   |
-| :------------ | :-------   | :------- |
-| python       | 3.10.14   | 本项目必需   |
-| torch        | 2.3.0     | 本项目必需    |
-| transformers | 4.40.2    | 本项目必需    |
-| datasets     | 2.19.1    | 本项目必需    |
-| accelerate   | 0.30.0    | 本项目必需    |
-| peft         | 0.10.0    | 本项目必需    |
-| trl          | 0.8.6     | 本项目无关，为RLHF时使用，本项目没有用到，但是llmtuner库需要依赖于这个 |
-| deepspeed    | 0.14.0    | 本项目必需 |
-| bitsandbytes | 0.43.1    | 本项目必需 |
-| flash-attn   | 2.5.8     | 本项目必需，可能需要手动单独运行```pip install flash-attn==2.5.8```，安装非常耗时，且可能存在不成功的可能，安装难度较大  |
-| vllm         | 0.4.2     | 本项目必需，核心部署库，可能需要单独运行```pip install vllm==0.4.2```，安装非常耗时，且可能存在不成功的可能，安装难度较大，安装请参考：[https://docs.vllm.ai/en/latest/getting_started/installation.html](https://docs.vllm.ai/en/latest/getting_started/installation.html) |
-| llmtuner     | 0.7.1.dev0 | **本项目必需，核心训练库，安装时可能需要用git clone的方式安装，参考[https://github.com/hiyouga/LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory)**，安装时可以参考教程[https://zhuanlan.zhihu.com/p/695287607](https://zhuanlan.zhihu.com/p/695287607) |
+AI21 的 Jamba 1.6 模型卡要求 `vllm>=0.6.5`，并指出 `transformers` 4.44.0 和 4.44.1 存在 Jamba 兼容问题。下表按官方要求和本仓库脚本使用的接口给出参考组合，需在目标服务器上验证。
 
-Jamba 1.6 官方模型：
-* [AI21 Jamba Mini 1.6](https://huggingface.co/ai21labs/AI21-Jamba-Mini-1.6)
-* [AI21 Jamba Large 1.6](https://huggingface.co/ai21labs/AI21-Jamba-Large-1.6)
+| 软件包 | 参考版本 | 用途 |
+| --- | --- | --- |
+| Python | 3.10 | 推理与微调 |
+| PyTorch | `2.5.1`（CUDA 12.4 构建） | 推理与微调。参见 [vLLM 0.6.5 CUDA 依赖](https://github.com/vllm-project/vllm/blob/v0.6.5/requirements-cuda.txt)和 [PyTorch 发布版本](https://docs.pytorch.org/get-started/previous-versions/#v251)。 |
+| vLLM | `0.6.5` | Mini、Large 和合并 LoRA 后的推理。 |
+| Transformers | `4.46.3` | 加载模型和分词器，满足 [vLLM 0.6.5](https://github.com/vllm-project/vllm/blob/v0.6.5/requirements-common.txt) 与 [TRL 0.12.2](https://github.com/huggingface/trl/blob/v0.12.2/setup.py) 的版本范围。 |
+| TRL | `0.12.2` | Mini 微调，支持脚本使用的 [`SFTConfig` 和 `max_seq_length`](https://huggingface.co/docs/trl/v0.12.2/en/sft_trainer)。 |
+| Datasets、Accelerate、PEFT | `datasets>=2.21.0`、`accelerate>=0.34.0`、`peft>=0.8.0` | 按 [TRL 0.12.2 的依赖要求](https://github.com/huggingface/trl/blob/v0.12.2/setup.py) 选择兼容版本，用于读取训练数据、设备分配和 LoRA。 |
+| Mamba CUDA 扩展 | `mamba-ssm`、`causal-conv1d>=1.2.0` | Transformers 加载的模型在启用 `use_mamba_kernels` 时需要这两个包，选用与 PyTorch 和 CUDA 匹配的构建。参见 [AI21 的 Mamba 安装说明](https://huggingface.co/ai21labs/AI21-Jamba-Mini-1.6/blob/14ea3d665a1f68c74f3a7cadaa32ebc84f352308/README.md#prerequisites)。 |
+| pandas、openpyxl、tqdm | 随推理环境安装 | 写入 `.xlsx` 和显示进度。 |
 
-运行 Jamba 脚本时，`<model_name>` 可以直接填写上述 Hugging Face 模型 ID，也可以填写已经下载到本地的模型目录绝对路径。
-
-### 调用大模型接口的环境变量依赖
-本项目调用大模型（gpt-4-1106-preview、kimichat等）的部分依赖于[data/MedQA/utils/MultiProcessingLLM](data/MedQA/utils/MultiProcessingLLM)。
-你可以从[https://platform.moonshot.cn](https://platform.moonshot.cn)、[https://api2d.com](https://api2d.com)当中注册账号申请api并使用LLM
-
-本部分主要用于调用KimiChat API时用到。需要调用那些大模型，就设置那些API。
-在使用前，需要配置环境变量，如下所示：
-* 设置环境变量
-```bash
-vim ~/.bashrc
-```
-在其中增加以下语句并且保存
+如果服务器已经配好 Jamba 环境，直接激活并检查版本。
 
 ```bash
-# 设置访问https://portal.azure.com提供的ChatGPT接口服务的api_key变量
-# https://zhishenggpt.openai.azure.com/
-export GPT35_AZURE_OPENAI_KEY='xxxx'
-# https://zhishenggpt40.openai.azure.com/
-export GPT4_AZURE_OPENAI_KEY='xxxx'
-
-# https://openai.api2d.net/v1
-export API2D_OPENAI_KEY='xxxx'
-
-# https://dev.iai007.cloud/ai/api/v1
-export HEFEI_OPENAI_KEY='xxxx'
-
-# https://platform.moonshot.cn/console/api-keys
-export KIMI_OPENAI_KEY='xxxx'
-```
-然后刷新环境配置
-```bash
-source ~/.bashrc
+conda activate "$TRUSS_JAMBA_ENV"
+nvidia-smi --query-gpu=index,name,memory.total,driver_version --format=csv
+python -m pip show torch vllm transformers trl peft
+python -m pip check
 ```
 
-
-### 大模型参数下载(推荐)
-建议使用[https://hf-mirror.com/](https://hf-mirror.com/)下载大模型，参考其中的**方法三：使用 hfd**，可以做到稳定下载不断线，示例如下：
-* 设置环境变量
-```bash
-vim ~/.bashrc
-```
-在其中增加以下语句并且保存
-```bash
-export HF_ENDPOINT=https://hf-mirror.com
-```
-然后刷新环境配置
-```bash
-source ~/.bashrc
-```
-
-* 下载hfd工具
+在 Ubuntu 22.04 LTS 服务器上新建 Jamba 环境时，按下面的命令安装。安装后用上面的命令核对 GPU 和软件包版本。
 
 ```bash
-cd <你的保存大模型的路径>
-wget https://hf-mirror.com/hfd/hfd.sh
-chmod a+x hfd.sh
+conda create -n "$TRUSS_JAMBA_ENV" python=3.10 -y
+conda activate "$TRUSS_JAMBA_ENV"
+python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+python -m pip install vllm==0.6.5 transformers==4.46.3 trl==0.12.2 \
+    datasets==3.1.0 accelerate==1.1.1 peft==0.13.2 huggingface-hub==0.26.5 \
+    pandas==2.2.2 openpyxl==3.1.2 tqdm==4.67.1 openai==1.58.1 httpx==0.27.2
+python -m pip check
+python -c 'import torch, vllm; from trl import SFTConfig, SFTTrainer; print(torch.__version__, torch.version.cuda); assert torch.cuda.is_available()'
 ```
 
-* 运行下载命令
+Mini 推理脚本固定用 2 卡，Large 推理脚本固定用 8 卡。运行前用 `CUDA_VISIBLE_DEVICES` 选择分配到的 GPU。
+
+当模型配置启用 `use_mamba_kernels` 时，在 LoRA 微调前安装对应的 CUDA 扩展。下面的 wheel 对应上述 Python 3.10、Linux x86_64、PyTorch 2.5.1 CUDA 12 环境。 [Mamba 发布文件](https://github.com/state-spaces/mamba/releases/tag/v2.2.4) · [causal-conv1d 发布文件](https://github.com/Dao-AILab/causal-conv1d/releases/tag/v1.5.0.post8)
+
 ```bash
-cd <你的保存大模型的路径>
-./hfd.sh shenzhi-wang/Llama3-8B-Chinese-Chat --tool aria2c -x 4
-./hfd.sh Qwen/Qwen1.5-14B-Chat --tool aria2c -x 4
+python -m pip install \
+    'https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.5.0.post8/causal_conv1d-1.5.0.post8+cu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl' \
+    'https://github.com/state-spaces/mamba/releases/download/v2.2.4/mamba_ssm-2.2.4+cu12torch2.5cxx11abiFALSE-cp310-cp310-linux_x86_64.whl'
+python -c 'import causal_conv1d, mamba_ssm'
 ```
 
+## 2. 数据集与知识来源
 
-## MedQA数据集
+### 已经预处理数据集
+
+| 数据集 | LoRA 微调文件 | 样本数 |
+| --- | --- | ---: |
+| MedQA | [RAG_MedQA_Mainland_train_500(example).json](data/MedQA/RAG_MedQA_Mainland_train_500%28example%29.json) | 500 |
+| MedMCQA | [Med_MCQA_knowledge_test_train.json](data/MedMCQA/result/Med_MCQA_knowledge_test_train.json) | 300 |
+
+两份微调文件的每条样本都在 `messages` 中包含 `system`、`user` 和 `assistant`。`assistant` 保存解析和参考答案，为 LoRA 微调提供监督数据。重新预处理时，按第 3 步用豆包生成解析并写入 `assistant`。仓库现有文件的解析来源待核实。
+
+首次验证可用 MedQA 微调数据和独立于该训练文件的 MedMCQA 样本检查脚本流程。评测文件包含 `answer_idx`，推理脚本过滤 `assistant` 消息后运行推理。 [MedMCQA 评测样本](data/MedMCQA/result/Med_MCQA_test.json)
+
+```bash
+TRAIN_NAME='RAG_MedQA_Mainland_train_500(example)'
+TRAIN_DATA="MedQA/$TRAIN_NAME.json"
+EVAL_DATA='MedMCQA/result/Med_MCQA_test.json'
+```
+
+Jamba 脚本的数据参数以仓库的 `data/` 为根，`TRAIN_DATA` 和 `EVAL_DATA` 省略了这个前缀。也可以传入数据文件的绝对路径。选择 MedMCQA 微调时，将 `TRAIN_NAME` 设为 `Med_MCQA_knowledge_test_train`，将 `TRAIN_DATA` 设为 `MedMCQA/result/Med_MCQA_knowledge_test_train.json`，并将 `EVAL_DATA` 指向独立留出的评测文件。正式实验应在同一个数据集上划分训练集和评测集，并固定各组的评测输入。
+
+MedMCQA 微调文件与仓库里的两份 300 题评测样本使用了同一批题目，其中带知识的评测样本连对话内容也与微调文件逐条相同。用这份 MedMCQA 数据微调后，需要另选留出题来评估模型效果。 [带知识评测样本](data/MedMCQA/result/Med_MCQA_knowledge_test.json) · [基础评测样本](data/MedMCQA/result/Med_MCQA_test.json)
+
+### 小样本验证
+
+复制上面的 MedQA 训练与 MedMCQA 评测变量设置后，取前 4 条训练样本和前 3 条评测样本。运行第 4 步下载模型，再执行第 6、7 步的 Mini 对照组命令和第 8 步的结果核验。小样本只减少生成和训练耗时，模型加载仍需第 1 步的 GPU 配置。
+
+```bash
+python - "$TRAIN_DATA" "$EVAL_DATA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+data = Path("data")
+output = data / "local"
+output.mkdir(exist_ok=True)
+for source, target, count in zip(sys.argv[1:], ("smoke_train.json", "smoke_eval.json"), (4, 3)):
+    samples = json.loads((data / source).read_text(encoding="utf-8"))
+    (output / target).write_text(json.dumps(samples[:count], ensure_ascii=False), encoding="utf-8")
+PY
+TRAIN_NAME=smoke_train
+TRAIN_DATA=local/smoke_train.json
+EVAL_DATA=local/smoke_eval.json
+```
+
+### 原始数据与知识来源
+
+#### MedQA 数据集
+
 * 数据集来源：[https://github.com/jind11/MedQA](https://github.com/jind11/MedQA)
 * 下载链接：[https://drive.google.com/file/d/1ImYUSLk9JbgHXOemfvyiDiirluZHPeQw/view?usp=sharing](https://drive.google.com/file/d/1ImYUSLk9JbgHXOemfvyiDiirluZHPeQw/view?usp=sharing)
 * 中文介绍：[https://zhuanlan.zhihu.com/p/679590312](https://zhuanlan.zhihu.com/p/679590312)
 
 
-### MedMCQA 数据集
+#### MedMCQA 数据集
 
 * 数据集来源：[MedMCQA](https://github.com/medmcqa/medmcqa)
 * 下载链接：[官方数据下载](https://drive.google.com/uc?export=download&id=15VkJdq5eyWIkfb_aoD3oS8i4tScbHYky)
-* 大文件存储：`data/MedMCQA/data/MedMCQA_train.json` 和 `data/MedMCQA/data/train.json` 使用 Git LFS 管理；克隆后如未自动下载，请运行 `git lfs pull`。
+* 原始训练文件 `data/MedMCQA/data/MedMCQA_train.json` 和 `data/MedMCQA/data/train.json` 使用 Git LFS。需要这些文件时，在克隆目录运行 `git lfs install` 和 `git lfs pull`。上面的预处理样本可以直接读取。
 
-## 数据集预处理
+从原始数据构建实验样本时，先划分训练集与评测集，再准备本次实验使用的知识文档。
 
-“已完成”指原实验中已完成；本仓库已经包含以下步骤所需的原始数据、处理代码与示例输出，重新构建时从项目根目录按以下原步骤执行。
+## 3. 数据集预处理
 
-### 将txt文本转换为json文本(已完成，无需重复操作)
-```bash
-conda activate llama_factory
-cd ./data/MedQA/utils
-
-# txt转换为json
-python -u txt2json.py --input_txt_dir '../data_clean/textbooks/zh_paragraph' --output_json_dir '../data_clean/textbooks/zh_paragraph_json' --max_knowledge_len 1800 --language_type chinese --min_knowledge_len 5 --do_chunk
-python -u txt2json.py --input_txt_dir '../data_clean/textbooks/zh_sentence' --output_json_dir '../data_clean/textbooks/zh_sentence_json' --max_knowledge_len 1800 --language_type chinese --min_knowledge_len 5 --do_chunk
-python -u txt2json.py --input_txt_dir '../data_clean/textbooks/en' --output_json_dir '../data_clean/textbooks/en_json' --max_knowledge_len 1800 --language_type english --min_knowledge_len 5 --do_chunk
-```
-
-### 读取json文本完成向量化(已完成，无需重复操作)
+从原始数据构建训练集和评测集时，先将知识文档转为 JSON，建立向量索引并为题目附加检索知识，再生成训练解析和格式化数据。已有教材 JSON 时可从[向量索引构建](#向量索引构建)开始。已有检索结果时可从[训练解析生成](#训练解析生成)开始。
 
 ```bash
-# 根据json文件转换为向量
-python -u vector_store.py --input_json_dir '../data_clean/textbooks/zh_sentence_json' --store_top_path '../data_clean/vector_stores/zh_sentence'
-python -u vector_store.py --input_json_dir '../data_clean/textbooks/zh_paragraph_json' --store_top_path '../data_clean/vector_stores/zh_paragraph'
-python -u vector_store.py --input_json_dir '../data_clean/textbooks/en_json' --store_top_path '../data_clean/vector_stores/en'
+conda activate "$TRUSS_DATA_ENV"
 ```
 
-### 执行训练集和测试集的检索，构建标准指令集(已完成，无需重复操作)
+### 知识文档格式转换
 
-* 特别地，```--device_ids```参数指定使用的显卡，如果只有一张显卡，就设置```--device_ids="0"```,```--num_process=1```。
-* 特别地，```--query_key_name```指定用于检索的query，可以选择"question"——仅用问题进行检索，或者"question_with_options"——问题与选项拼接在一起检索。最终方案使用了"question_with_options"。
-
-* 特别地，需要先打开[data/MedQA/utils/config.py](data/MedQA/utils/config.py)修改"model_path"为服务器中检索Embedding模型的实际路径。
-
+将 UTF-8 的教材或企业知识文档交给现有 [txt2json.py](data/MedQA/utils/txt2json.py) 切分。下面使用仓库里的教材作为示例。处理企业知识时，将 `--input_txt_dir` 和 `--output_json_dir` 换成对应目录。
 
 ```bash
-conda activate llama_factory
-cd ./data/MedQA/utils
-
-# 对json文件进行检索
-# 中文数据集------检索仅使用"question"
-# 训练集
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/Mainland/train.jsonl" \
-    --embedding_model_name="stella-base-zh-v2" \
-    --store_path="../data_clean/vector_stores/zh_paragraph" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/train" \
-    --output_json_file="train.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question"
-
-# 验证集
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/Mainland/dev.jsonl" \
-    --embedding_model_name="stella-base-zh-v2" \
-    --store_path="../data_clean/vector_stores/zh_paragraph" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/dev" \
-    --output_json_file="dev.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question"
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/Mainland/test.jsonl" \
-    --embedding_model_name="stella-base-zh-v2" \
-    --store_path="../data_clean/vector_stores/zh_paragraph" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/test" \
-    --output_json_file="test.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question"
-
-
-# 中文数据集------检索使用"question_with_options"
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/Mainland/train.jsonl" \
-    --embedding_model_name="stella-base-zh-v2" \
-    --store_path="../data_clean/vector_stores/zh_paragraph" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/train" \
-    --output_json_file="train.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question_with_options"
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/Mainland/dev.jsonl" \
-    --embedding_model_name="stella-base-zh-v2" \
-    --store_path="../data_clean/vector_stores/zh_paragraph" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/dev" \
-    --output_json_file="dev.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question_with_options"
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/Mainland/test.jsonl" \
-    --embedding_model_name="stella-base-zh-v2" \
-    --store_path="../data_clean/vector_stores/zh_paragraph" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/test" \
-    --output_json_file="test.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question_with_options"
-
-
-# 英文数据集------检索仅使用"question"
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/US/train.jsonl" \
-    --embedding_model_name="stella-base-en-v2" \
-    --store_path="../data_clean/vector_stores/en" \
-    --output_json_dir="../data_clean/questions_with_knowledge/US/train" \
-    --output_json_file="train.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question"
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/US/dev.jsonl" \
-    --embedding_model_name="stella-base-en-v2" \
-    --store_path="../data_clean/vector_stores/en" \
-    --output_json_dir="../data_clean/questions_with_knowledge/US/dev" \
-    --output_json_file="dev.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question"
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/US/test.jsonl" \
-    --embedding_model_name="stella-base-en-v2" \
-    --store_path="../data_clean/vector_stores/en" \
-    --output_json_dir="../data_clean/questions_with_knowledge/US/test" \
-    --output_json_file="test.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question"
-
-
-# 英文数据集------检索仅使用"question_with_options"
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/US/train.jsonl" \
-    --embedding_model_name="stella-base-en-v2" \
-    --store_path="../data_clean/vector_stores/en" \
-    --output_json_dir="../data_clean/questions_with_knowledge/US/train" \
-    --output_json_file="train.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question_with_options"
-
-
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/US/dev.jsonl" \
-    --embedding_model_name="stella-base-en-v2" \
-    --store_path="../data_clean/vector_stores/en" \
-    --output_json_dir="../data_clean/questions_with_knowledge/US/dev" \
-    --output_json_file="dev.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question_with_options"
-
-
-python generate_question_with_knowledges.py \
-    --num_process=8 \
-    --index_key_name="id" \
-    --topk_knowledge=10 \
-    --knowledge_threshold=0.65 \
-    --input_jsonl_path="../data_clean/questions/US/test.jsonl" \
-    --embedding_model_name="stella-base-en-v2" \
-    --store_path="../data_clean/vector_stores/en" \
-    --output_json_dir="../data_clean/questions_with_knowledge/US/test" \
-    --output_json_file="test.json" \
-    --device_ids="0,1,2,3,4,5,6,7" \
-    --query_key_name="question_with_options"
+(
+    cd data/MedQA/utils || exit
+    python -u txt2json.py --input_txt_dir '../data_clean/textbooks/zh_paragraph' --output_json_dir '../data_clean/textbooks/zh_paragraph_json' --max_knowledge_len 1800 --language_type chinese --min_knowledge_len 5 --do_chunk
+    python -u txt2json.py --input_txt_dir '../data_clean/textbooks/zh_sentence' --output_json_dir '../data_clean/textbooks/zh_sentence_json' --max_knowledge_len 1800 --language_type chinese --min_knowledge_len 5 --do_chunk
+    python -u txt2json.py --input_txt_dir '../data_clean/textbooks/en' --output_json_dir '../data_clean/textbooks/en_json' --max_knowledge_len 1800 --language_type english --min_knowledge_len 5 --do_chunk
+)
 ```
 
+### 向量索引构建
 
-### 生成中文数据集的含有解析的文本(已完成，无需重复操作)
+现有向量化脚本会遍历中英文两套 Stella 模型。[config.py](data/MedQA/utils/config.py) 根据仓库位置定位 `models/` 下的模型。下载两套模型后再建立索引。 [stella-base-zh-v2](https://huggingface.co/infgrad/stella-base-zh-v2) · [stella-base-en-v2](https://huggingface.co/infgrad/stella-base-en-v2)
 
 ```bash
-conda activate llama_factory
-cd ./data/MedQA/utils
-
-# 训练集
-python ./MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_json_data.py --do_check \
-    --num_process=30 \
-    --model_name="moonshot-v1-32k_kimi" \
-    --prompt_config_path="./MultiProcessingLLM/prompt_config_of_generate_explain.json" \
-    --use_load_raw_json_data_with_process \
-    --input_json_data_path="../data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train.json" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train_with_explain_using_moonshot-v1-32k_kimi" \
-    --list_placeholder="list_placeholder" \
-    --llm_output_key="chatgpt_explain" \
-    --index_key_name="id" \
-    --temperature=0.7 \
-    --max_tokens=4096 \
-    --top_p=0.95
-
-# 测试集
-python ./MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_json_data.py --do_check \
-    --num_process=30 \
-    --model_name="moonshot-v1-32k_kimi" \
-    --prompt_config_path="./MultiProcessingLLM/prompt_config_of_generate_explain.json" \
-    --use_load_raw_json_data_with_process \
-    --input_json_data_path="../data_clean/questions_with_knowledge/Mainland/test/retrive_use_question_with_options/stella-base-zh-v2/test.json" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/test/retrive_use_question_with_options/stella-base-zh-v2/test_with_explain_using_moonshot-v1-32k_kimi" \
-    --list_placeholder="list_placeholder" \
-    --llm_output_key="chatgpt_explain" \
-    --index_key_name="id" \
-    --temperature=0.7 \
-    --max_tokens=4096 \
-    --top_p=0.95
-
-
-# 验证集
-python ./MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_json_data.py --do_check \
-    --num_process=30 \
-    --model_name="moonshot-v1-32k_kimi" \
-    --prompt_config_path="./MultiProcessingLLM/prompt_config_of_generate_explain.json" \
-    --use_load_raw_json_data_with_process \
-    --input_json_data_path="../data_clean/questions_with_knowledge/Mainland/dev/retrive_use_question_with_options/stella-base-zh-v2/dev.json" \
-    --output_json_dir="../data_clean/questions_with_knowledge/Mainland/dev/retrive_use_question_with_options/stella-base-zh-v2/dev_with_explain_using_moonshot-v1-32k_kimi" \
-    --list_placeholder="list_placeholder" \
-    --llm_output_key="chatgpt_explain" \
-    --index_key_name="id" \
-    --temperature=0.7 \
-    --max_tokens=4096 \
-    --top_p=0.95
+huggingface-cli download infgrad/stella-base-zh-v2 --local-dir models/stella-base-zh-v2
+huggingface-cli download infgrad/stella-base-en-v2 --local-dir models/stella-base-en-v2
 ```
 
-### 构建中文数据集的标准数据集(已完成，无需重复操作)
-```bash
-python format_json_dataset_for_training_llm.py \
-    --input_json_data_path="../data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train_with_explain_using_moonshot-v1-32k_kimi" \
-    --dataset_info_path="../../dataset_info.json" \
-    --dataset_name="RAG_MedQA_Mainland_train" \
-    --dataset_info_relative_dir="MedQA/" \
-    --output_json_data_dir="../" \
-    --do_register_dataset
-
-# 构建测试集
-python format_json_dataset_for_training_llm.py \
-    --input_json_data_path="../data_clean/questions_with_knowledge/Mainland/test/retrive_use_question_with_options/stella-base-zh-v2/test_with_explain_using_moonshot-v1-32k_kimi" \
-    --dataset_info_path="../../dataset_info.json" \
-    --dataset_name="RAG_MedQA_Mainland_test" \
-    --dataset_info_relative_dir="MedQA/" \
-    --output_json_data_dir="../" \
-    --do_register_dataset
-```
-
-# 2. Jamba 模型推理微调操作说明
-
-## 一、概述
-
-本说明详细涵盖了 Jamba 模型的 large 和 mini 版本的推理操作，以及 Jamba mini 版本的微调（finetune）和微调后的推理使用方法，为相关操作提供全面指导。
-
-## 二、环境准备
-
-（一）依赖库安装
-
-### 曙光云容器配置
-
-其中硬件与驱动依赖：
-
-jamba mini (推理和微调)
-16 核心; 120.0G 内存; 2 加速器 | 单实例
-
-jamba large
-64 核心; 480.0G 内存; 8 加速器 | 单实例
-
-### 软件包版本依赖
- 曙光云镜像名称(推理和微调)
- __jupyterlab-pytorch_0707:2.2.0-py3.10-cuda12.1-ubuntu22.04-devel_0707__
-
-镜像包中已包含conda环境
-```bash
-conda activate jamba
-```
-
-（二）路径说明
-原服务器源码目录现对应本仓库的 `jamba/` 目录。
-
-本仓库的四个模型脚本位于 `jamba/`，执行下列命令前进入该目录并创建结果目录：
+使用 `vector_store.py` 为上一步生成的知识 JSON 建立索引。自定义知识目录时，调整 `--input_json_dir` 和 `--store_top_path`。
 
 ```bash
-cd jamba
-mkdir -p results
+(
+    cd data/MedQA/utils || exit
+    python -u vector_store.py --input_json_dir '../data_clean/textbooks/zh_sentence_json' --store_top_path '../data_clean/vector_stores/zh_sentence'
+    python -u vector_store.py --input_json_dir '../data_clean/textbooks/zh_paragraph_json' --store_top_path '../data_clean/vector_stores/zh_paragraph'
+    python -u vector_store.py --input_json_dir '../data_clean/textbooks/en_json' --store_top_path '../data_clean/vector_stores/en'
+)
 ```
 
-模型可以使用 Hugging Face 模型 ID 或本地模型目录绝对路径；数据集根目录为仓库内的 `data/`，微调输出根目录为 `jamba-finetune-data/`。
+### 知识检索与增强
 
-该目录下包含以下关键文件：
+使用 `generate_question_with_knowledges.py` 为训练集、验证集和评测集附加检索知识。根据实验使用的题库与检索输入选择对应的命令。原实验采用 `question_with_options`，即用题干和选项检索。
+
+只有一张可用 GPU 时，将 `--device_ids` 设为 `0`，并将 `--num_process` 设为 `1`。使用自定义向量索引时，将 `--store_path` 指向上一环节指定的索引目录。
+
+#### 中文题干检索
+
 ```bash
-jamba16large_inference.py
-jamba16mini_finetune.py
-jamba16mini_inference.py
-jamba16mini_inference_by_finetune.py
+(
+    cd data/MedQA/utils || exit
+    # 训练集
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/Mainland/train.jsonl" \
+        --embedding_model_name="stella-base-zh-v2" \
+        --store_path="../data_clean/vector_stores/zh_paragraph" \
+        --output_json_dir="../data_clean/questions_with_knowledge/Mainland/train" \
+        --output_json_file="train.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question"
+
+    # 验证集
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/Mainland/dev.jsonl" \
+        --embedding_model_name="stella-base-zh-v2" \
+        --store_path="../data_clean/vector_stores/zh_paragraph" \
+        --output_json_dir="../data_clean/questions_with_knowledge/Mainland/dev" \
+        --output_json_file="dev.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question"
+
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/Mainland/test.jsonl" \
+        --embedding_model_name="stella-base-zh-v2" \
+        --store_path="../data_clean/vector_stores/zh_paragraph" \
+        --output_json_dir="../data_clean/questions_with_knowledge/Mainland/test" \
+        --output_json_file="test.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question"
+)
 ```
 
-当前仓库的数据集主路径为 `data/`，可直接使用 `data/MedQA` 和 `data/MedMCQA` 下的数据；运行脚本时可传入相对于 `data/` 的路径或数据文件的绝对路径。
-该目录下包含：
-**MedQA 目录**
+#### 中文题干与选项检索
+
 ```bash
-data/MedQA/RAG_MedQA_Mainland_train_500(example).json：包含 messages 与 answer_idx 的训练示例
-data/MedQA/data_clean/questions：MedQA 原始题目数据
-data/MedQA/data_clean/textbooks：医学教材原始文本与转换后的 JSON 数据
+(
+    cd data/MedQA/utils || exit
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/Mainland/train.jsonl" \
+        --embedding_model_name="stella-base-zh-v2" \
+        --store_path="../data_clean/vector_stores/zh_paragraph" \
+        --output_json_dir="../data_clean/questions_with_knowledge/Mainland/train" \
+        --output_json_file="train.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question_with_options"
+
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/Mainland/dev.jsonl" \
+        --embedding_model_name="stella-base-zh-v2" \
+        --store_path="../data_clean/vector_stores/zh_paragraph" \
+        --output_json_dir="../data_clean/questions_with_knowledge/Mainland/dev" \
+        --output_json_file="dev.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question_with_options"
+
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/Mainland/test.jsonl" \
+        --embedding_model_name="stella-base-zh-v2" \
+        --store_path="../data_clean/vector_stores/zh_paragraph" \
+        --output_json_dir="../data_clean/questions_with_knowledge/Mainland/test" \
+        --output_json_file="test.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question_with_options"
+)
 ```
-**MedMCQA 目录**
+
+#### 英文题干检索
+
 ```bash
-data/MedMCQA/data：MedMCQA 原始数据及转换后的数据
-data/MedMCQA/result：用于训练和推理的 MedMCQA 标准数据集
-data/MedMCQA/utils：MedMCQA 数据处理辅助文件
+(
+    cd data/MedQA/utils || exit
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/US/train.jsonl" \
+        --embedding_model_name="stella-base-en-v2" \
+        --store_path="../data_clean/vector_stores/en" \
+        --output_json_dir="../data_clean/questions_with_knowledge/US/train" \
+        --output_json_file="train.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question"
+
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/US/dev.jsonl" \
+        --embedding_model_name="stella-base-en-v2" \
+        --store_path="../data_clean/vector_stores/en" \
+        --output_json_dir="../data_clean/questions_with_knowledge/US/dev" \
+        --output_json_file="dev.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question"
+
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/US/test.jsonl" \
+        --embedding_model_name="stella-base-en-v2" \
+        --store_path="../data_clean/vector_stores/en" \
+        --output_json_dir="../data_clean/questions_with_knowledge/US/test" \
+        --output_json_file="test.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question"
+)
 ```
 
+#### 英文题干与选项检索
 
-## 三、Jamba 16 Large 版本推理
-
-（一）代码文件
 ```bash
-jamba16large_inference.py
+(
+    cd data/MedQA/utils || exit
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/US/train.jsonl" \
+        --embedding_model_name="stella-base-en-v2" \
+        --store_path="../data_clean/vector_stores/en" \
+        --output_json_dir="../data_clean/questions_with_knowledge/US/train" \
+        --output_json_file="train.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question_with_options"
+
+
+
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/US/dev.jsonl" \
+        --embedding_model_name="stella-base-en-v2" \
+        --store_path="../data_clean/vector_stores/en" \
+        --output_json_dir="../data_clean/questions_with_knowledge/US/dev" \
+        --output_json_file="dev.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question_with_options"
+
+
+    python generate_question_with_knowledges.py \
+        --num_process=8 \
+        --index_key_name="id" \
+        --topk_knowledge=10 \
+        --knowledge_threshold=0.65 \
+        --input_jsonl_path="../data_clean/questions/US/test.jsonl" \
+        --embedding_model_name="stella-base-en-v2" \
+        --store_path="../data_clean/vector_stores/en" \
+        --output_json_dir="../data_clean/questions_with_knowledge/US/test" \
+        --output_json_file="test.json" \
+        --device_ids="0,1,2,3,4,5,6,7" \
+        --query_key_name="question_with_options"
+)
 ```
-（二）执行步骤
-设置参数：确认模型 ID 或本地模型路径、数据集路径、temperature、top_k、top_p 等参数正确。
-执行命令：
+
+以使用题干和选项检索的 Mainland 训练集为例，输出为 `data/MedQA/data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train.json`。转换前先核对样本数和 `knowledges_for_llm` 中的检索内容。
+
+### 训练解析生成
+
+为数据集生成解析时，可以通过火山方舟的 OpenAI 兼容接口调用豆包文本模型。在 [火山方舟控制台](https://console.volcengine.com/ark) 选择目标项目，开通豆包模型服务，并在「API Key 管理」中创建密钥。复制已开通的模型 ID；如果使用自定义推理接入点，复制其 `ep-` 开头的接入点 ID。参见 [火山方舟快速入门](https://docs.volcengine.com/docs/ark/quick-start?lang=zh)。
+
+在运行 Python 的同一个 Bash 终端中设置环境变量。按提示输入密钥，并将 `ARK_MODEL_ID` 的占位值换成刚复制的 ID。
+
 ```bash
-python jamba16large_inference.py <model_name> <dataset_filenames>
+read -rsp '火山方舟 API Key: ' ARK_API_KEY
+printf '\n'
+export ARK_API_KEY
+export ARK_MODEL_ID='填入豆包模型 ID 或 ep- 开头的接入点 ID'
 ```
 
-（三）参数说明
-`<model_name>`：Hugging Face 模型 ID 或本地模型路径，例如 ai21labs/AI21-Jamba-Large-1.6。
-`<dataset_filenames>`：相对于 `data/` 的数据集路径或绝对路径，可以传入多个并用空格分隔。
-（四）示例
+如果当前环境还没有 OpenAI Python SDK，先运行 `python -m pip install 'openai>=1.0'`。用以下命令发送一条测试消息，终端应打印豆包的回复。参见 [火山方舟 OpenAI SDK 接入文档](https://docs.volcengine.com/docs/ark/compatible-with-openai-sdk?lang=zh)。
+
 ```bash
-python jamba16large_inference.py ai21labs/AI21-Jamba-Large-1.6 "$(cd .. && pwd)/data/MedQA/RAG_MedQA_Mainland_train_500(example).json"
-python jamba16large_inference.py ai21labs/AI21-Jamba-Large-1.6 "$(cd .. && pwd)/data/MedMCQA/result/Med_MCQA_test.json"
+python - <<'PY'
+import os
+
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://ark.cn-beijing.volces.com/api/v3",
+    api_key=os.environ["ARK_API_KEY"],
+)
+response = client.chat.completions.create(
+    model=os.environ["ARK_MODEL_ID"],
+    messages=[{"role": "user", "content": "请用一句话回复：连接成功。"}],
+)
+print(response.choices[0].message.content)
+PY
 ```
 
-## 四、Jamba 16 Mini 版本推理
+### 训练集与评测集格式化
 
-（一）代码文件
-jamba16mini_inference.py
-（二）执行步骤
-设置参数：确认模型 ID 或本地模型路径、数据集路径、temperature、top_k、top_p 等参数正确。
-执行命令：
+上面的豆包示例用于验证一次 API 调用。批量生成豆包解析需要从外部调用流程取得结果，再按题目 ID 写入检索后的训练 JSON 的 `chatgpt_explain` 字段。仓库中的现有批处理脚本提供 Kimi 等接口。 [批处理脚本](data/MedQA/utils/MultiProcessingLLM/openai_api_llm.py) · [原解析提示词](data/MedQA/utils/MultiProcessingLLM/prompt_config_of_generate_explain.json)
+
+保留检索输出里的 `id`、`meta_info`、`question_with_options`、`answer_with_idx`、`answer_idx`、`knowledges_for_llm` 和 `retrieve_info`。以使用题干和选项检索的 Mainland 题库为例，先运行 `mkdir -p data/local`，将带豆包解析的训练 JSON 数组保存为 `data/local/Mainland_train_with_doubao.json`，再生成微调与评测文件。评测输入使用第 3 步中检索后的 `test.json`。
+
 ```bash
-python jamba16mini_inference.py <model_name> <dataset_filenames>
+(
+    cd data/MedQA/utils || exit
+    python format_json_dataset_for_training_llm.py \
+        --input_json_data_path ../../local/Mainland_train_with_doubao.json \
+        --dataset_name RAG_MedQA_Mainland_train_doubao \
+        --output_json_data_dir ../../local
+    python format_json_dataset_for_training_llm.py \
+        --input_json_data_path ../data_clean/questions_with_knowledge/Mainland/test/retrive_use_question_with_options/stella-base-zh-v2/test.json \
+        --dataset_name RAG_MedQA_Mainland_eval \
+        --output_json_data_dir ../../local \
+        --do_test
+)
 ```
 
-（三）参数说明
-`<model_name>`：Hugging Face 模型 ID 或本地模型路径，例如 ai21labs/AI21-Jamba-Mini-1.6。
-`<dataset_filenames>`：相对于 `data/` 的数据集路径或绝对路径，可以传入多个并用空格分隔。
-（四）示例
+两份输出位于 `data/local/`。训练文件包含解析和参考答案组成的 `assistant` 消息。`--do_test` 生成含 `system`、`user` 和计分用 `answer_idx` 的评测样本。将下列变量用于后续推理和微调。
+
 ```bash
-python jamba16mini_inference.py ai21labs/AI21-Jamba-Mini-1.6 "$(cd .. && pwd)/data/MedQA/RAG_MedQA_Mainland_train_500(example).json"
-python jamba16mini_inference.py ai21labs/AI21-Jamba-Mini-1.6 "$(cd .. && pwd)/data/MedMCQA/result/Med_MCQA_test.json"
+TRAIN_NAME=RAG_MedQA_Mainland_train_doubao
+TRAIN_DATA="local/$TRAIN_NAME.json"
+EVAL_DATA=local/RAG_MedQA_Mainland_eval.json
 ```
 
-## 五、Jamba 16 Mini 版本 Finetune
+## 4. 模型获取
 
-（一）代码文件
-jamba16mini_finetune.py
-（二）执行步骤
-设置参数：可以通过命令行参数设置模型名称和数据集路径。
-执行命令：
+Jamba 1.6 官方模型。
+
+* [AI21 Jamba Mini 1.6](https://huggingface.co/ai21labs/AI21-Jamba-Mini-1.6)
+* [AI21 Jamba Large 1.6](https://huggingface.co/ai21labs/AI21-Jamba-Large-1.6)
+
+运行 Jamba 脚本时，`<model_name>` 可以直接填写上述 Hugging Face 模型 ID，也可以填写已经下载到本地的模型目录绝对路径。
+
+先登录 Hugging Face 并在目标模型页接受权重访问条款。确认模型目录、缓存和微调后合并目录有足够空间，再下载 Mini。
+
 ```bash
-python jamba16mini_finetune.py <model_name> <dataset_path>
+conda activate "$TRUSS_JAMBA_ENV"
+huggingface-cli login
+MINI_MODEL=models/AI21-Jamba-Mini-1.6
+huggingface-cli download ai21labs/AI21-Jamba-Mini-1.6 --local-dir "$MINI_MODEL"
+test -f "$MINI_MODEL/config.json"
 ```
 
-（三）参数说明
-`<model_name>`：Hugging Face 模型 ID 或本地模型路径，例如 ai21labs/AI21-Jamba-Mini-1.6。
-`<dataset_path>`：相对于 `data/` 的数据集路径，例如 `MedQA/RAG_MedQA_Mainland_train_500(example).json`；也可以传入绝对路径。
-（四）示例
+## 5. 消融实验配置
+
+1. 原始模型目录作为对照组。另存一份模型目录用于消融，并使用能区分两组的目录名。
+2. 在消融目录的 `config.json` 中填写本次实验实际要测试的 Jamba 内部参数。记录字段名、原值和修改值。需要改变权重张量形状的配置应使用与之匹配的权重。
+3. 两组使用相同的评测文件、提示、采样参数和训练数据。推理脚本里的 `temperature`、`top_k`、`top_p` 和上下文长度沿用现有设置。后续分别把各组模型目录传给现有 Jamba 脚本。
+
 ```bash
-python jamba16mini_finetune.py ai21labs/AI21-Jamba-Mini-1.6 "$(cd .. && pwd)/data/MedQA/RAG_MedQA_Mainland_train_500(example).json"
-python jamba16mini_finetune.py ai21labs/AI21-Jamba-Mini-1.6 "$(cd .. && pwd)/data/MedMCQA/result/Med_MCQA_knowledge_test_train.json"
+ABLATION_MODEL=models/AI21-Jamba-Mini-1.6-ablation
+# 准备消融副本时执行一次，再编辑副本里的 config.json。
+test ! -e "$ABLATION_MODEL" && cp -a "$MINI_MODEL" "$ABLATION_MODEL"
 ```
 
-（五）finetune 结果
-保存目录为仓库根目录下的 `jamba-finetune-data/`。
-## 六、Jamba 16 Mini 版本 Finetune 后的推理
+## 6. 基础模型推理
 
-（一）代码文件
+先用原始配置运行 Mini 推理。 [jamba16mini_inference.py](jamba/jamba16mini_inference.py)
+
 ```bash
-jamba16mini_inference_by_finetune.py
+export CUDA_VISIBLE_DEVICES=0,1
+mkdir -p jamba/results
+
+(cd jamba && python jamba16mini_inference.py "../$MINI_MODEL" "$EVAL_DATA")
 ```
-（二）执行步骤
-设置参数：确认模型 ID 或本地模型路径、数据集路径、temperature、top_k、top_p、peft_relative_path 等参数正确。
-执行命令：
+
+完成第 5 步后，用同一份评测数据运行消融组。
+
 ```bash
-python jamba16mini_inference_by_finetune.py <model_name> <dataset_filenames> <peft_relative_path>
+(cd jamba && python jamba16mini_inference.py "../$ABLATION_MODEL" "$EVAL_DATA")
 ```
 
-（三）参数说明
-`<model_name>`：Hugging Face 模型 ID 或本地模型路径，例如 ai21labs/AI21-Jamba-Mini-1.6。
-`<dataset_filenames>`：相对于 `data/` 的数据集路径或绝对路径，可以传入多个并用空格分隔。
-`<peft_relative_path>`：Peft 模型的相对路径，固定路径为仓库根目录下的 `jamba-finetune-data/`，只需输入相对路径，例如 AI21-Jamba-Mini-1.6/Med_MCQA_knowledge_test_train/checkpoint-300。
-（四）示例
+Large 使用原有 [jamba16large_inference.py](jamba/jamba16large_inference.py) 和脚本中的 `experts_int8`。使用 Large 时，选择 8 张可见 GPU。
+
 ```bash
-python jamba16mini_inference_by_finetune.py ai21labs/AI21-Jamba-Mini-1.6 "$(cd .. && pwd)/data/MedQA/RAG_MedQA_Mainland_train_500(example).json" "AI21-Jamba-Mini-1.6/RAG_MedQA_Mainland_train_500(example)/checkpoint-300"
-python jamba16mini_inference_by_finetune.py ai21labs/AI21-Jamba-Mini-1.6 "$(cd .. && pwd)/data/MedMCQA/result/Med_MCQA_knowledge_test.json" "AI21-Jamba-Mini-1.6/Med_MCQA_knowledge_test_train/checkpoint-300"
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+LARGE_MODEL=models/AI21-Jamba-Large-1.6
+huggingface-cli download ai21labs/AI21-Jamba-Large-1.6 --local-dir "$LARGE_MODEL"
+(cd jamba && python jamba16large_inference.py "../$LARGE_MODEL" "$EVAL_DATA")
 ```
 
-（五）说明
-推理前代码中会将原模型（例如 ai21labs/AI21-Jamba-Mini-1.6）跟 finetune 后的 lora 权重合并至 peft_relative_path 路径下的 merged 目录。
+## 7. LoRA 微调与推理
 
-## 七、结果保存
+### LoRA 微调
 
-推理结果保存到当前工作目录下的 `results/`；按上述方式执行时为 `jamba/results/`。文件名格式为：
+使用同一训练文件分别对各组进行微调。先运行对照组。 [jamba16mini_finetune.py](jamba/jamba16mini_finetune.py)
+
 ```bash
-jamba16<版本>_inference_<相关信息>_temperature<温度值>_topp<top_p值>_topk<top_k值>_<时间戳>.xlsx
+export CUDA_VISIBLE_DEVICES=0,1
+(cd jamba && python jamba16mini_finetune.py "../$MINI_MODEL" "$TRAIN_DATA")
 ```
 
-## 八、推理提取答案说明
+对消融组执行同样的训练。
 
-推理代码中都有一个提取模型回复答案的函数 `<extract_predicted_option_by_us>`。
-如遇见新的模型输出答案格式，可以在函数 `<extract_predicted_option_by_us>` 中加入对应表达式。
 ```bash
-extract_answer.py
+(cd jamba && python jamba16mini_finetune.py "../$ABLATION_MODEL" "$TRAIN_DATA")
 ```
-用于重新处理提取结果文件（.xlsx）的模型回复的答案，原脚本会覆盖对应结果文件。
-使用示例：
-```bash
-cd ../utils
-python extract_answer.py --directory /path/to/your/directory
-```
-不传入 `--directory` 时，默认处理仓库内的 `jamba/results/` 目录。
 
-以上说明中的参数和路径请根据实际情况进行调整。
+输出目录为 `jamba-finetune-data/<模型目录名>/<训练文件名去掉 .json>/`。确认日志没有 `Training failed`，并在实际输出目录中找到 `adapter_config.json` 和 `adapter_model.safetensors`。如果选择中间检查点，使用实际生成的 `checkpoint-*` 目录。
+
+### 微调后推理
+
+用 [jamba16mini_inference_by_finetune.py](jamba/jamba16mini_inference_by_finetune.py) 加载对应 LoRA。第三个参数相对于 `jamba-finetune-data/`，可以填写最终权重目录，也可以追加实际的 `checkpoint-*`。该脚本会在所选目录下写入或复用 `merged/`，应使用和微调时同组的基础模型及 LoRA 权重。
+
+```bash
+BASE_PEFT="$(basename "$MINI_MODEL")/$TRAIN_NAME"
+(cd jamba && python jamba16mini_inference_by_finetune.py "../$MINI_MODEL" "$EVAL_DATA" "$BASE_PEFT")
+```
+
+使用消融组生成的 LoRA 权重运行推理。
+
+```bash
+ABLATION_PEFT="$(basename "$ABLATION_MODEL")/$TRAIN_NAME"
+(cd jamba && python jamba16mini_inference_by_finetune.py "../$ABLATION_MODEL" "$EVAL_DATA" "$ABLATION_PEFT")
+```
+
+## 8. 评测结果与核验
+
+结果写到 `jamba/results/`，文件名包含模型名、数据集名、采样参数和时间戳。分别记录原始配置和消融配置在基础权重与 LoRA 权重下的样本数、正确数和准确率。
+
+- 终端应出现「推理完成」，并在结果目录生成新的 `.xlsx`。
+- Excel 包含 `Question`、`Correct Answer`、`Predicted Option`、`Generated Text` 和 `Correct`。使用仓库里的完整 MedMCQA 评测样本时，每份文件应有 300 条数据。使用小样本评测时，应有 3 条。检查生成文本和未提取到选项的行，再对比准确率。
+- 如需重新提取模型给出的选项，可对结果文件的副本运行 [extract_answer.py](utils/extract_answer.py)。脚本会覆盖所处理目录里的 Excel。
+
+```bash
+mkdir -p jamba/results/recheck
+# 先把需要重新处理的 .xlsx 复制到 jamba/results/recheck/
+python utils/extract_answer.py --directory jamba/results/recheck
+```
+
+用于论文复现时，随结果记录仓库提交、模型权重版本、评测划分、准确的 `config.json` 改动、推理与训练参数，以及原始结果文件。第 2 步的跨数据集示例和小样本用于验证流程。复现论文数值时应使用与论文一致的留出题及消融设置。

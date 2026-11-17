@@ -21,13 +21,13 @@
 # 密级：秘密，不公开，本文件永久性禁止开源！！！！！！！
 # File Name: format_json_dataset_for_training_llm.py
 # Description: 
-# /home/phd-chen.yirong/scutcyr/LLaMA-Factory/data/MedQA/data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train_with_explain_using_moonshot-v1-32k_kimi
+# data/MedQA/data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train_with_explain_using_moonshot-v1-32k_kimi
 
 
 # 使用示例
 '''
-conda activate llama_factory
-cd ~/scutcyr/LLaMA-Factory/data/MedQA/utils
+conda activate "$TRUSS_DATA_ENV"
+cd data/MedQA/utils
 
 # 构建训练集
 python format_json_dataset_for_training_llm.py \
@@ -460,7 +460,8 @@ def main():
                                                             assistant_prompt_key_names_list= [
                                                                             ['chatgpt_explain'],
                                                                             ['answer_with_idx']],
-                                                            assistant_prompt=MEDQA_ANSWER_PROMPT)
+                                                            assistant_prompt=MEDQA_ANSWER_PROMPT,
+                                                            do_test=args.do_test)
 
     else:
 
@@ -473,7 +474,8 @@ def main():
                                                             assistant_prompt_key_names_list= [
                                                                             ['chatgpt_explain'],
                                                                             ['answer_with_idx']],
-                                                            assistant_prompt=MEDQA_ANSWER_PROMPT)
+                                                            assistant_prompt=MEDQA_ANSWER_PROMPT,
+                                                            do_test=args.do_test)
     
     # 保存数据集
     # 判断是否采样：

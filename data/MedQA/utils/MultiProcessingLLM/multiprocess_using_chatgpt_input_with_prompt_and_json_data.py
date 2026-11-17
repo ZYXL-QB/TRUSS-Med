@@ -33,10 +33,10 @@
 pip install openai==1.7.1
 
 ## 运行示例
-conda activate llama_factory
+conda activate "$TRUSS_DATA_ENV"
 
 # 生成问题与答案之间的解析
-cd ~/scutcyr/LLaMA-Factory/data/MedQA/utils
+cd data/MedQA/utils
 python ./MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_json_data.py --do_check \
     --num_process=30 \
     --model_name="moonshot-v1-32k_kimi" \
@@ -1296,5 +1296,3 @@ if __name__ == "__main__":
         print("运行程序花费了%s秒" % (end - start))
     except Exception as e:
         print(e)
-
-        

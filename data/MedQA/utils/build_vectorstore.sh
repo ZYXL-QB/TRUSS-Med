@@ -1,9 +1,7 @@
+#!/usr/bin/env bash
 
-
-
-
-conda activate llama_factory
-cd ~/scutcyr/LLaMA-Factory/data/MedQA/utils
+# 运行前激活数据预处理环境。
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")" || exit 1
 
 # txt转换为json
 python -u txt2json.py --input_txt_dir '../data_clean/textbooks/zh_paragraph' --output_json_dir '../data_clean/textbooks/zh_paragraph_json' --max_knowledge_len 1800 --language_type chinese --min_knowledge_len 5 --do_chunk
@@ -187,7 +185,6 @@ python generate_question_with_knowledges.py \
 
 # 生成问题与答案之间的解析
 # 中文
-cd ~/scutcyr/LLaMA-Factory/data/MedQA/utils
 python ./MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_json_data.py --do_check \
     --num_process=30 \
     --model_name="moonshot-v1-32k_kimi" \
@@ -234,7 +231,6 @@ python ./MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_jso
     --top_p=0.95
 
 # 英文
-cd ~/scutcyr/LLaMA-Factory/data/MedQA/utils
 python ./MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_json_data.py --do_check \
     --num_process=30 \
     --model_name="moonshot-v1-32k_kimi" \
@@ -284,7 +280,7 @@ python ./MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_jso
 
 
 # 构建标准训练集
-# 数据路径：/home/phd-chen.yirong/scutcyr/LLaMA-Factory/data/MedQA/data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train_with_explain_using_moonshot-v1-32k_kimi
+# 数据路径：../data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train_with_explain_using_moonshot-v1-32k_kimi
 # 构建训练集
 python format_json_dataset_for_training_llm.py \
     --input_json_data_path="../data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train_with_explain_using_moonshot-v1-32k_kimi" \

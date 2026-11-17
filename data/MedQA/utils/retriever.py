@@ -3,6 +3,7 @@ import json
 from pydantic.dataclasses import dataclass
 from pydantic import Field
 from langchain.embeddings import HuggingFaceEmbeddings
+from config import huggingface_embeddings_config
 from vector_store import load_store_for_one_stage, load_store_for_two_stage
 
 
@@ -229,7 +230,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-i", "--input_jsonl_path", type=str, default='../data_clean/questions/Mainland/train.jsonl', help="json格式的知识文档的目录")
     parser.add_argument("-e", "--embedding_model_name", type=str, default='stella-base-zh-v2', help="字符串形式，输入的embedding模型的名称")
-    parser.add_argument("-e", "--embedding_model_path", type=str, default='/home/sharefiles/huggingface.co/stella-base-zh-v2', help="字符串形式，输入的embedding模型的路径")
+    parser.add_argument("-ep", "--embedding_model_path", type=str, default=huggingface_embeddings_config['stella-base-zh-v2']['model_path'], help="字符串形式，输入的embedding模型的路径")
     parser.add_argument("-v", "--store_path", type=str, default='../data_clean/vector_stores/zh_paragraph', help="张量数据库保存的目录，其子目录类似于：stella-base-zh-v2/0_whole")
     parser.add_argument("-o", "--output_json_path", type=str, default='../data_clean/questions_with_knowledge/zh_paragraph', help="张量保存的目录")
     
