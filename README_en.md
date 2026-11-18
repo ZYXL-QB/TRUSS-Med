@@ -355,3 +355,63 @@ python utils/extract_answer.py --directory jamba/results/recheck
 ```
 
 For each evaluation, record the repository commit, model revision, evaluation split, exact changes to `config.json`, and inference and training settings. Keep the original output files so you can verify the accuracy for each group.
+
+## 9. Quick Test
+
+Run baseline Mini inference on three bundled MedMCQA questions. Complete the [Jamba environment setup](#1-environment-setup) and [Mini model download](#4-model-download) first. Then run the entire block from the repository root in the active Jamba environment. Use two 80 GB GPUs. The command defaults to `0,1` and respects an existing `CUDA_VISIBLE_DEVICES` setting.
+
+```bash
+(
+set -e
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
+MINI_MODEL="${MINI_MODEL:-models/Jamba-1.6/mini}"
+if [ ! -s "$MINI_MODEL/config.json" ]; then
+    printf '%s\n' 'Download Jamba Mini in Section 4 or set MINI_MODEL to its local directory.' >&2
+    exit 1
+fi
+MINI_MODEL="$(cd "$MINI_MODEL" && pwd)"
+mkdir -p data/local jamba/results
+RUN_DIR="$(mktemp -d data/local/quick_eval_XXXXXX)"
+RUN_NAME="${RUN_DIR##*/}"
+EVAL_DATA="local/$RUN_NAME/$RUN_NAME.json"
+
+python - "$EVAL_DATA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+import torch
+
+if torch.cuda.device_count() < 2:
+    raise SystemExit("Jamba Mini needs two visible GPUs for this command.")
+
+source = Path("data/MedMCQA/result/Med_MCQA_test.json")
+samples = json.loads(source.read_text(encoding="utf-8"))[:3]
+if len(samples) != 3:
+    raise SystemExit("The evaluation sample needs at least three questions.")
+Path("data", sys.argv[1]).write_text(json.dumps(samples, ensure_ascii=False), encoding="utf-8")
+PY
+
+(cd jamba && python jamba16mini_inference.py "$MINI_MODEL" "$EVAL_DATA")
+
+python - "$RUN_NAME" <<'PY'
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+workbooks = list(Path("jamba/results").glob(f"jamba16mini_inference_*_{sys.argv[1]}_*.xlsx"))
+if len(workbooks) != 1:
+    raise SystemExit("Expected one new workbook for this run. Check the inference log.")
+rows = pd.read_excel(workbooks[0], keep_default_na=False)
+required = {"Question", "Correct Answer", "Predicted Option", "Generated Text", "Correct"}
+if len(rows) != 3 or not required.issubset(rows.columns):
+    raise SystemExit("Expected three rows and the evaluation columns in the workbook.")
+if rows["Generated Text"].fillna("").astype(str).str.strip().eq("").any():
+    raise SystemExit("At least one question has no generated text. Check the inference log.")
+print(f"Quick test passed: {workbooks[0]}")
+PY
+)
+```
+
+A successful run prints `Quick test passed` and the path to its new `.xlsx` workbook. The workbook must contain three result rows with generated text for each question.

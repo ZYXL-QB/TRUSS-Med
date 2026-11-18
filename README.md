@@ -580,3 +580,63 @@ python utils/extract_answer.py --directory jamba/results/recheck
 ```
 
 每次评测完成后，随结果记录仓库提交、模型权重版本、评测数据划分、`config.json` 的具体改动，以及推理和训练参数。保留原始结果文件，以便核对各组的准确率。
+
+## 9. 快速测试
+
+用仓库自带的 3 道 MedMCQA 题验证 Mini 基础推理。完成[第 1 步的 Jamba 环境配置](#1-实验环境配置)和[第 4 步的 Mini 权重下载](#4-模型获取)后，在已激活的 Jamba 环境中从仓库根目录执行整段命令。使用 2 张 80 GB GPU，默认选择 `0,1`，也可以预先设置 `CUDA_VISIBLE_DEVICES`。
+
+```bash
+(
+set -e
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
+MINI_MODEL="${MINI_MODEL:-models/Jamba-1.6/mini}"
+if [ ! -s "$MINI_MODEL/config.json" ]; then
+    printf '%s\n' 'Download Jamba Mini in Section 4 or set MINI_MODEL to its local directory.' >&2
+    exit 1
+fi
+MINI_MODEL="$(cd "$MINI_MODEL" && pwd)"
+mkdir -p data/local jamba/results
+RUN_DIR="$(mktemp -d data/local/quick_eval_XXXXXX)"
+RUN_NAME="${RUN_DIR##*/}"
+EVAL_DATA="local/$RUN_NAME/$RUN_NAME.json"
+
+python - "$EVAL_DATA" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+import torch
+
+if torch.cuda.device_count() < 2:
+    raise SystemExit("Jamba Mini needs two visible GPUs for this command.")
+
+source = Path("data/MedMCQA/result/Med_MCQA_test.json")
+samples = json.loads(source.read_text(encoding="utf-8"))[:3]
+if len(samples) != 3:
+    raise SystemExit("The evaluation sample needs at least three questions.")
+Path("data", sys.argv[1]).write_text(json.dumps(samples, ensure_ascii=False), encoding="utf-8")
+PY
+
+(cd jamba && python jamba16mini_inference.py "$MINI_MODEL" "$EVAL_DATA")
+
+python - "$RUN_NAME" <<'PY'
+import sys
+from pathlib import Path
+
+import pandas as pd
+
+workbooks = list(Path("jamba/results").glob(f"jamba16mini_inference_*_{sys.argv[1]}_*.xlsx"))
+if len(workbooks) != 1:
+    raise SystemExit("Expected one new workbook for this run. Check the inference log.")
+rows = pd.read_excel(workbooks[0], keep_default_na=False)
+required = {"Question", "Correct Answer", "Predicted Option", "Generated Text", "Correct"}
+if len(rows) != 3 or not required.issubset(rows.columns):
+    raise SystemExit("Expected three rows and the evaluation columns in the workbook.")
+if rows["Generated Text"].fillna("").astype(str).str.strip().eq("").any():
+    raise SystemExit("At least one question has no generated text. Check the inference log.")
+print(f"Quick test passed: {workbooks[0]}")
+PY
+)
+```
+
+通过时打印 `Quick test passed` 和本次生成的 `.xlsx` 路径。通过条件为本次生成的工作簿包含 3 条结果，每条都有模型生成文本。
