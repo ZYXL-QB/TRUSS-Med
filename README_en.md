@@ -252,14 +252,27 @@ EVAL_DATA=local/RAG_MedQA_Mainland_eval.json
 
 ## 4. Model Download
 
-Accept the model's access terms on Hugging Face and authenticate with a read token. Allow disk space for the model weights, an ablation copy, and merged LoRA weights. [Mini](https://huggingface.co/ai21labs/AI21-Jamba-Mini-1.6) · [Large](https://huggingface.co/ai21labs/AI21-Jamba-Large-1.6)
+The ModelScope repository stores Jamba Mini 1.6 under `mini/` and Large 1.6 under `large/`. [Browse the model files on ModelScope](https://modelscope.cn/models/zyxl2026/Jamba/files) · `https://modelscope.cn/models/zyxl2026/Jamba/files`
+
+Install the ModelScope CLI in the Jamba environment and set the local model paths. Allow disk space for the model weights, an ablation copy, and merged LoRA weights.
 
 ```bash
 conda activate "$TRUSS_JAMBA_ENV"
-huggingface-cli login
-MINI_MODEL=models/AI21-Jamba-Mini-1.6
-huggingface-cli download ai21labs/AI21-Jamba-Mini-1.6 --local-dir "$MINI_MODEL"
-test -f "$MINI_MODEL/config.json"
+python -m pip install modelscope-hub==0.7.1
+
+JAMBA_REPO=zyxl2026/Jamba
+JAMBA_REVISION=master
+JAMBA_DIR=models/Jamba-1.6
+MINI_MODEL="$JAMBA_DIR/mini"
+LARGE_MODEL="$JAMBA_DIR/large"
+```
+
+Download `mini/` for Mini inference or fine-tuning. Section 6 provides the Large download command. The scripts use the downloaded local model directories.
+
+```bash
+ms-hub download "$JAMBA_REPO" --revision "$JAMBA_REVISION" \
+    --local-dir "$JAMBA_DIR" --include 'mini/*'
+test -f "$MINI_MODEL/config.json" && test -f "$MINI_MODEL/model.safetensors.index.json"
 ```
 
 ## 5. Model Ablation
@@ -289,12 +302,14 @@ After preparing the alternate model configuration in Section 5, run it against t
 (cd jamba && python jamba16mini_inference.py "../$ABLATION_MODEL" "$EVAL_DATA")
 ```
 
-The Large script uses an eight-GPU `experts_int8` configuration. It can be run separately.
+For Large inference, use the variables from Section 4 to download `large/` separately, then run the script with eight visible GPUs and `experts_int8`.
 
 ```bash
+ms-hub download "$JAMBA_REPO" --revision "$JAMBA_REVISION" \
+    --local-dir "$JAMBA_DIR" --include 'large/*'
+test -f "$LARGE_MODEL/config.json" && test -f "$LARGE_MODEL/model.safetensors.index.json"
+
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-LARGE_MODEL=models/AI21-Jamba-Large-1.6
-huggingface-cli download ai21labs/AI21-Jamba-Large-1.6 --local-dir "$LARGE_MODEL"
 (cd jamba && python jamba16large_inference.py "../$LARGE_MODEL" "$EVAL_DATA")
 ```
 

@@ -467,21 +467,27 @@ EVAL_DATA=local/RAG_MedQA_Mainland_eval.json
 
 ## 4. 模型获取
 
-Jamba 1.6 官方模型。
+Jamba Mini 1.6 和 Large 1.6 权重分别位于魔搭仓库的 `mini/` 和 `large/` 目录。 [打开魔搭模型文件](https://modelscope.cn/models/zyxl2026/Jamba/files) · `https://modelscope.cn/models/zyxl2026/Jamba/files`
 
-* [AI21 Jamba Mini 1.6](https://huggingface.co/ai21labs/AI21-Jamba-Mini-1.6)
-* [AI21 Jamba Large 1.6](https://huggingface.co/ai21labs/AI21-Jamba-Large-1.6)
-
-运行 Jamba 脚本时，`<model_name>` 可以直接填写上述 Hugging Face 模型 ID，也可以填写已经下载到本地的模型目录绝对路径。
-
-先登录 Hugging Face 并在目标模型页接受权重访问条款。确认模型目录、缓存和微调后合并目录有足够空间，再下载 Mini。
+在 Jamba 环境安装魔搭 CLI，并设置本地模型路径。为模型权重、消融副本和合并后的 LoRA 权重预留磁盘空间。
 
 ```bash
 conda activate "$TRUSS_JAMBA_ENV"
-huggingface-cli login
-MINI_MODEL=models/AI21-Jamba-Mini-1.6
-huggingface-cli download ai21labs/AI21-Jamba-Mini-1.6 --local-dir "$MINI_MODEL"
-test -f "$MINI_MODEL/config.json"
+python -m pip install modelscope-hub==0.7.1
+
+JAMBA_REPO=zyxl2026/Jamba
+JAMBA_REVISION=master
+JAMBA_DIR=models/Jamba-1.6
+MINI_MODEL="$JAMBA_DIR/mini"
+LARGE_MODEL="$JAMBA_DIR/large"
+```
+
+运行 Mini 推理或微调时，下载 `mini/`。Large 的下载命令见第 6 步。后续脚本接收下载后的本地模型目录。
+
+```bash
+ms-hub download "$JAMBA_REPO" --revision "$JAMBA_REVISION" \
+    --local-dir "$JAMBA_DIR" --include 'mini/*'
+test -f "$MINI_MODEL/config.json" && test -f "$MINI_MODEL/model.safetensors.index.json"
 ```
 
 ## 5. 消融实验配置
@@ -513,12 +519,14 @@ mkdir -p jamba/results
 (cd jamba && python jamba16mini_inference.py "../$ABLATION_MODEL" "$EVAL_DATA")
 ```
 
-Large 使用原有 [jamba16large_inference.py](jamba/jamba16large_inference.py) 和脚本中的 `experts_int8`。使用 Large 时，选择 8 张可见 GPU。
+如果运行 Large 推理，使用第 4 步设置的变量，单独下载 `large/`，再选择 8 张可见 GPU 运行 `experts_int8`。 [jamba16large_inference.py](jamba/jamba16large_inference.py)
 
 ```bash
+ms-hub download "$JAMBA_REPO" --revision "$JAMBA_REVISION" \
+    --local-dir "$JAMBA_DIR" --include 'large/*'
+test -f "$LARGE_MODEL/config.json" && test -f "$LARGE_MODEL/model.safetensors.index.json"
+
 export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-LARGE_MODEL=models/AI21-Jamba-Large-1.6
-huggingface-cli download ai21labs/AI21-Jamba-Large-1.6 --local-dir "$LARGE_MODEL"
 (cd jamba && python jamba16large_inference.py "../$LARGE_MODEL" "$EVAL_DATA")
 ```
 
