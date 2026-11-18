@@ -583,7 +583,9 @@ python utils/extract_answer.py --directory jamba/results/recheck
 
 ## 9. 快速测试
 
-取仓库内 MedQA Mainland 测试集的前 3 道题，验证 Jamba Large 1.6 的 `experts_int8` 推理。完成[第 1 步的 Jamba 环境配置](#1-实验环境配置)和[第 6 步的 Large 权重下载](#6-基础模型推理)后，在已激活的 Jamba 环境中从仓库根目录执行整段命令。使用 8 张 80 GB GPU，默认选择 `0,1,2,3,4,5,6,7`，也可以预先设置 `CUDA_VISIBLE_DEVICES`。
+取已预处理的 MedQA Mainland 训练示例前 3 条，验证 Jamba Large 1.6 的 `experts_int8` 推理流程。检索知识已写入 `user` 消息，推理脚本会过滤 `assistant` 消息。 [MedQA 预处理示例](data/MedQA/RAG_MedQA_Mainland_train_500%28example%29.json)
+
+完成[第 1 步的 Jamba 环境配置](#1-实验环境配置)和[第 6 步的 Large 权重下载](#6-基础模型推理)后，在已激活的 Jamba 环境中从仓库根目录执行整段命令。使用 8 张 80 GB GPU，默认选择 `0,1,2,3,4,5,6,7`，也可以预先设置 `CUDA_VISIBLE_DEVICES`。
 
 ```bash
 (
@@ -603,7 +605,6 @@ EVAL_DATA="local/$RUN_NAME/$RUN_NAME.json"
 python - "$EVAL_DATA" <<'PY'
 import json
 import sys
-from itertools import islice
 from pathlib import Path
 
 import torch
@@ -611,22 +612,10 @@ import torch
 if torch.cuda.device_count() < 8:
     raise SystemExit("Jamba Large needs eight visible GPUs for this command.")
 
-source = Path("data/MedQA/data_clean/questions/Mainland/test.jsonl")
-with source.open(encoding="utf-8") as handle:
-    questions = [json.loads(line) for line in islice(handle, 3)]
-if len(questions) != 3:
-    raise SystemExit("The MedQA test split needs at least three questions.")
-
-samples = []
-for item in questions:
-    options = "\n".join(f"{letter}. {text}" for letter, text in item["options"].items())
-    samples.append({
-        "messages": [
-            {"role": "system", "content": "请作答医学选择题，最后一行写 Answer: <选项字母>。"},
-            {"role": "user", "content": f"{item['question']}\n{options}"},
-        ],
-        "answer_idx": item["answer_idx"],
-    })
+source = Path("data/MedQA/RAG_MedQA_Mainland_train_500(example).json")
+samples = json.loads(source.read_text(encoding="utf-8"))[:3]
+if len(samples) != 3:
+    raise SystemExit("The prepared MedQA file needs at least three examples.")
 Path("data", sys.argv[1]).write_text(json.dumps(samples, ensure_ascii=False), encoding="utf-8")
 PY
 

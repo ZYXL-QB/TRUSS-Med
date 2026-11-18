@@ -358,7 +358,9 @@ For each evaluation, record the repository commit, model revision, evaluation sp
 
 ## 9. Quick Test
 
-Run Jamba Large 1.6 with `experts_int8` on the first three questions from the bundled MedQA Mainland test split. Complete the [Jamba environment setup](#1-environment-setup) and [Large model download](#6-baseline-inference) first. Then run the entire block from the repository root in the active Jamba environment. Use eight 80 GB GPUs. The command defaults to `0,1,2,3,4,5,6,7` and respects an existing `CUDA_VISIBLE_DEVICES` setting.
+Use the first three prepared MedQA Mainland training examples to check Jamba Large 1.6 inference with `experts_int8`. The `user` messages contain retrieved knowledge, and the inference script filters out `assistant` messages. [Prepared MedQA examples](data/MedQA/RAG_MedQA_Mainland_train_500%28example%29.json)
+
+Complete the [Jamba environment setup](#1-environment-setup) and [Large model download](#6-baseline-inference) first. Then run the entire block from the repository root in the active Jamba environment. Use eight 80 GB GPUs. The command defaults to `0,1,2,3,4,5,6,7` and respects an existing `CUDA_VISIBLE_DEVICES` setting.
 
 ```bash
 (
@@ -378,7 +380,6 @@ EVAL_DATA="local/$RUN_NAME/$RUN_NAME.json"
 python - "$EVAL_DATA" <<'PY'
 import json
 import sys
-from itertools import islice
 from pathlib import Path
 
 import torch
@@ -386,22 +387,10 @@ import torch
 if torch.cuda.device_count() < 8:
     raise SystemExit("Jamba Large needs eight visible GPUs for this command.")
 
-source = Path("data/MedQA/data_clean/questions/Mainland/test.jsonl")
-with source.open(encoding="utf-8") as handle:
-    questions = [json.loads(line) for line in islice(handle, 3)]
-if len(questions) != 3:
-    raise SystemExit("The MedQA test split needs at least three questions.")
-
-samples = []
-for item in questions:
-    options = "\n".join(f"{letter}. {text}" for letter, text in item["options"].items())
-    samples.append({
-        "messages": [
-            {"role": "system", "content": "请作答医学选择题，最后一行写 Answer: <选项字母>。"},
-            {"role": "user", "content": f"{item['question']}\n{options}"},
-        ],
-        "answer_idx": item["answer_idx"],
-    })
+source = Path("data/MedQA/RAG_MedQA_Mainland_train_500(example).json")
+samples = json.loads(source.read_text(encoding="utf-8"))[:3]
+if len(samples) != 3:
+    raise SystemExit("The prepared MedQA file needs at least three examples.")
 Path("data", sys.argv[1]).write_text(json.dumps(samples, ensure_ascii=False), encoding="utf-8")
 PY
 
