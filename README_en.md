@@ -344,7 +344,7 @@ ABLATION_PEFT="$(basename "$ABLATION_MODEL")/$TRAIN_NAME"
 
 ## 8. Evaluation Outputs
 
-Inference writes workbooks under `jamba/results/`. Check for a new workbook and the completion log. A workbook should contain three prediction rows for the small-sample check, or 300 for the full bundled MedMCQA evaluation example. Check the generated text and missing predicted options before comparing accuracy.
+Inference writes workbooks under `jamba/results/`. Check for a new workbook and the completion log. A workbook should contain three prediction rows for the small-sample check in Section 2, or 300 for the full bundled MedMCQA evaluation example. Check the generated text and missing predicted options before comparing accuracy.
 
 To rerun option extraction, copy the relevant workbooks to `jamba/results/recheck/`. The utility overwrites the workbooks it processes. [Answer extraction](utils/extract_answer.py)
 
@@ -358,7 +358,7 @@ For each evaluation, record the repository commit, model revision, evaluation sp
 
 ## 9. Quick Test
 
-Use the first three prepared MedQA Mainland training examples to check Jamba Large 1.6 inference with `experts_int8`. The `user` messages contain retrieved knowledge, and the inference script filters out `assistant` messages. [Prepared MedQA examples](data/MedQA/RAG_MedQA_Mainland_train_500%28example%29.json)
+Use the first 300 prepared MedQA Mainland training examples to check Jamba Large 1.6 inference with `experts_int8`. The `user` messages contain retrieved knowledge, and the inference script filters out `assistant` messages. [Prepared MedQA examples](data/MedQA/RAG_MedQA_Mainland_train_500%28example%29.json)
 
 Complete the [Jamba environment setup](#1-environment-setup) and [Large model download](#6-baseline-inference) first. Then run the entire block from the repository root in the active Jamba environment. Use eight 80 GB GPUs. The command defaults to `0,1,2,3,4,5,6,7` and respects an existing `CUDA_VISIBLE_DEVICES` setting.
 
@@ -376,8 +376,9 @@ mkdir -p data/local jamba/results
 RUN_DIR="$(mktemp -d data/local/quick_eval_XXXXXX)"
 RUN_NAME="${RUN_DIR##*/}"
 EVAL_DATA="local/$RUN_NAME/$RUN_NAME.json"
+SAMPLE_COUNT=300
 
-python - "$EVAL_DATA" <<'PY'
+python - "$EVAL_DATA" "$SAMPLE_COUNT" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -388,15 +389,16 @@ if torch.cuda.device_count() < 8:
     raise SystemExit("Jamba Large needs eight visible GPUs for this command.")
 
 source = Path("data/MedQA/RAG_MedQA_Mainland_train_500(example).json")
-samples = json.loads(source.read_text(encoding="utf-8"))[:3]
-if len(samples) != 3:
-    raise SystemExit("The prepared MedQA file needs at least three examples.")
+sample_count = int(sys.argv[2])
+samples = json.loads(source.read_text(encoding="utf-8"))[:sample_count]
+if len(samples) != sample_count:
+    raise SystemExit(f"The prepared MedQA file needs at least {sample_count} examples.")
 Path("data", sys.argv[1]).write_text(json.dumps(samples, ensure_ascii=False), encoding="utf-8")
 PY
 
 (cd jamba && python jamba16large_inference.py "$LARGE_MODEL" "$EVAL_DATA")
 
-python - "$RUN_NAME" <<'PY'
+python - "$RUN_NAME" "$SAMPLE_COUNT" <<'PY'
 import sys
 from pathlib import Path
 
@@ -407,8 +409,9 @@ if len(workbooks) != 1:
     raise SystemExit("Expected one new workbook for this run. Check the inference log.")
 rows = pd.read_excel(workbooks[0], keep_default_na=False)
 required = {"Question", "Correct Answer", "Predicted Option", "Generated Text", "Correct"}
-if len(rows) != 3 or not required.issubset(rows.columns):
-    raise SystemExit("Expected three rows and the evaluation columns in the workbook.")
+sample_count = int(sys.argv[2])
+if len(rows) != sample_count or not required.issubset(rows.columns):
+    raise SystemExit(f"Expected {sample_count} rows and the evaluation columns in the workbook.")
 if rows["Generated Text"].fillna("").astype(str).str.strip().eq("").any():
     raise SystemExit("At least one question has no generated text. Check the inference log.")
 print(f"Quick test passed: {workbooks[0]}")
@@ -416,4 +419,4 @@ PY
 )
 ```
 
-A successful run prints `Quick test passed` and the path to its new `.xlsx` workbook. The workbook must contain three result rows with generated text for each question.
+A successful run prints `Quick test passed` and the path to its new `.xlsx` workbook. The workbook must contain 300 result rows with generated text for each question.

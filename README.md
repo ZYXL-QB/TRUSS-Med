@@ -570,7 +570,7 @@ ABLATION_PEFT="$(basename "$ABLATION_MODEL")/$TRAIN_NAME"
 结果写到 `jamba/results/`，文件名包含模型名、数据集名、采样参数和时间戳。分别记录原始配置和消融配置在基础权重与 LoRA 权重下的样本数、正确数和准确率。
 
 - 终端应出现「推理完成」，并在结果目录生成新的 `.xlsx`。
-- Excel 包含 `Question`、`Correct Answer`、`Predicted Option`、`Generated Text` 和 `Correct`。使用仓库里的完整 MedMCQA 评测样本时，每份文件应有 300 条数据。使用小样本评测时，应有 3 条。检查生成文本和未提取到选项的行，再对比准确率。
+- Excel 包含 `Question`、`Correct Answer`、`Predicted Option`、`Generated Text` 和 `Correct`。使用仓库里的完整 MedMCQA 评测样本时，每份文件应有 300 条数据。按第 2 步的小样本验证运行时，应有 3 条。检查生成文本和未提取到选项的行，再对比准确率。
 - 如需重新提取模型给出的选项，可对结果文件的副本运行 [extract_answer.py](utils/extract_answer.py)。脚本会覆盖所处理目录里的 Excel。
 
 ```bash
@@ -583,7 +583,7 @@ python utils/extract_answer.py --directory jamba/results/recheck
 
 ## 9. 快速测试
 
-取已预处理的 MedQA Mainland 训练示例前 3 条，验证 Jamba Large 1.6 的 `experts_int8` 推理流程。检索知识已写入 `user` 消息，推理脚本会过滤 `assistant` 消息。 [MedQA 预处理示例](data/MedQA/RAG_MedQA_Mainland_train_500%28example%29.json)
+取已预处理的 MedQA Mainland 训练示例前 300 条，验证 Jamba Large 1.6 的 `experts_int8` 推理流程。检索知识已写入 `user` 消息，推理脚本会过滤 `assistant` 消息。 [MedQA 预处理示例](data/MedQA/RAG_MedQA_Mainland_train_500%28example%29.json)
 
 完成[第 1 步的 Jamba 环境配置](#1-实验环境配置)和[第 6 步的 Large 权重下载](#6-基础模型推理)后，在已激活的 Jamba 环境中从仓库根目录执行整段命令。使用 8 张 80 GB GPU，默认选择 `0,1,2,3,4,5,6,7`，也可以预先设置 `CUDA_VISIBLE_DEVICES`。
 
@@ -601,8 +601,9 @@ mkdir -p data/local jamba/results
 RUN_DIR="$(mktemp -d data/local/quick_eval_XXXXXX)"
 RUN_NAME="${RUN_DIR##*/}"
 EVAL_DATA="local/$RUN_NAME/$RUN_NAME.json"
+SAMPLE_COUNT=300
 
-python - "$EVAL_DATA" <<'PY'
+python - "$EVAL_DATA" "$SAMPLE_COUNT" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -613,15 +614,16 @@ if torch.cuda.device_count() < 8:
     raise SystemExit("Jamba Large needs eight visible GPUs for this command.")
 
 source = Path("data/MedQA/RAG_MedQA_Mainland_train_500(example).json")
-samples = json.loads(source.read_text(encoding="utf-8"))[:3]
-if len(samples) != 3:
-    raise SystemExit("The prepared MedQA file needs at least three examples.")
+sample_count = int(sys.argv[2])
+samples = json.loads(source.read_text(encoding="utf-8"))[:sample_count]
+if len(samples) != sample_count:
+    raise SystemExit(f"The prepared MedQA file needs at least {sample_count} examples.")
 Path("data", sys.argv[1]).write_text(json.dumps(samples, ensure_ascii=False), encoding="utf-8")
 PY
 
 (cd jamba && python jamba16large_inference.py "$LARGE_MODEL" "$EVAL_DATA")
 
-python - "$RUN_NAME" <<'PY'
+python - "$RUN_NAME" "$SAMPLE_COUNT" <<'PY'
 import sys
 from pathlib import Path
 
@@ -632,8 +634,9 @@ if len(workbooks) != 1:
     raise SystemExit("Expected one new workbook for this run. Check the inference log.")
 rows = pd.read_excel(workbooks[0], keep_default_na=False)
 required = {"Question", "Correct Answer", "Predicted Option", "Generated Text", "Correct"}
-if len(rows) != 3 or not required.issubset(rows.columns):
-    raise SystemExit("Expected three rows and the evaluation columns in the workbook.")
+sample_count = int(sys.argv[2])
+if len(rows) != sample_count or not required.issubset(rows.columns):
+    raise SystemExit(f"Expected {sample_count} rows and the evaluation columns in the workbook.")
 if rows["Generated Text"].fillna("").astype(str).str.strip().eq("").any():
     raise SystemExit("At least one question has no generated text. Check the inference log.")
 print(f"Quick test passed: {workbooks[0]}")
@@ -641,4 +644,4 @@ PY
 )
 ```
 
-通过时打印 `Quick test passed` 和本次生成的 `.xlsx` 路径。通过条件为本次生成的工作簿包含 3 条结果，每条都有模型生成文本。
+通过时打印 `Quick test passed` 和本次生成的 `.xlsx` 路径。通过条件为本次生成的工作簿包含 300 条结果，每条都有模型生成文本。
