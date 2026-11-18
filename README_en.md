@@ -358,18 +358,18 @@ For each evaluation, record the repository commit, model revision, evaluation sp
 
 ## 9. Quick Test
 
-Run baseline Mini inference on three bundled MedMCQA questions. Complete the [Jamba environment setup](#1-environment-setup) and [Mini model download](#4-model-download) first. Then run the entire block from the repository root in the active Jamba environment. Use two 80 GB GPUs. The command defaults to `0,1` and respects an existing `CUDA_VISIBLE_DEVICES` setting.
+Run Jamba Large 1.6 with `experts_int8` on the first three questions from the bundled MedQA Mainland test split. Complete the [Jamba environment setup](#1-environment-setup) and [Large model download](#6-baseline-inference) first. Then run the entire block from the repository root in the active Jamba environment. Use eight 80 GB GPUs. The command defaults to `0,1,2,3,4,5,6,7` and respects an existing `CUDA_VISIBLE_DEVICES` setting.
 
 ```bash
 (
 set -e
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
-MINI_MODEL="${MINI_MODEL:-models/Jamba-1.6/mini}"
-if [ ! -s "$MINI_MODEL/config.json" ]; then
-    printf '%s\n' 'Download Jamba Mini in Section 4 or set MINI_MODEL to its local directory.' >&2
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}"
+LARGE_MODEL="${LARGE_MODEL:-models/Jamba-1.6/large}"
+if [ ! -s "$LARGE_MODEL/config.json" ]; then
+    printf '%s\n' 'Download Jamba Large in Section 6 or set LARGE_MODEL to its local directory.' >&2
     exit 1
 fi
-MINI_MODEL="$(cd "$MINI_MODEL" && pwd)"
+LARGE_MODEL="$(cd "$LARGE_MODEL" && pwd)"
 mkdir -p data/local jamba/results
 RUN_DIR="$(mktemp -d data/local/quick_eval_XXXXXX)"
 RUN_NAME="${RUN_DIR##*/}"
@@ -378,21 +378,34 @@ EVAL_DATA="local/$RUN_NAME/$RUN_NAME.json"
 python - "$EVAL_DATA" <<'PY'
 import json
 import sys
+from itertools import islice
 from pathlib import Path
 
 import torch
 
-if torch.cuda.device_count() < 2:
-    raise SystemExit("Jamba Mini needs two visible GPUs for this command.")
+if torch.cuda.device_count() < 8:
+    raise SystemExit("Jamba Large needs eight visible GPUs for this command.")
 
-source = Path("data/MedMCQA/result/Med_MCQA_test.json")
-samples = json.loads(source.read_text(encoding="utf-8"))[:3]
-if len(samples) != 3:
-    raise SystemExit("The evaluation sample needs at least three questions.")
+source = Path("data/MedQA/data_clean/questions/Mainland/test.jsonl")
+with source.open(encoding="utf-8") as handle:
+    questions = [json.loads(line) for line in islice(handle, 3)]
+if len(questions) != 3:
+    raise SystemExit("The MedQA test split needs at least three questions.")
+
+samples = []
+for item in questions:
+    options = "\n".join(f"{letter}. {text}" for letter, text in item["options"].items())
+    samples.append({
+        "messages": [
+            {"role": "system", "content": "请作答医学选择题，最后一行写 Answer: <选项字母>。"},
+            {"role": "user", "content": f"{item['question']}\n{options}"},
+        ],
+        "answer_idx": item["answer_idx"],
+    })
 Path("data", sys.argv[1]).write_text(json.dumps(samples, ensure_ascii=False), encoding="utf-8")
 PY
 
-(cd jamba && python jamba16mini_inference.py "$MINI_MODEL" "$EVAL_DATA")
+(cd jamba && python jamba16large_inference.py "$LARGE_MODEL" "$EVAL_DATA")
 
 python - "$RUN_NAME" <<'PY'
 import sys
@@ -400,7 +413,7 @@ from pathlib import Path
 
 import pandas as pd
 
-workbooks = list(Path("jamba/results").glob(f"jamba16mini_inference_*_{sys.argv[1]}_*.xlsx"))
+workbooks = list(Path("jamba/results").glob(f"jamba16large_inference_*_{sys.argv[1]}_*.xlsx"))
 if len(workbooks) != 1:
     raise SystemExit("Expected one new workbook for this run. Check the inference log.")
 rows = pd.read_excel(workbooks[0], keep_default_na=False)
