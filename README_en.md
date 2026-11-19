@@ -529,11 +529,11 @@ A successful run prints `Quick test passed` and the path to its new `.xlsx` work
 
 ### Download result workbooks
 
-The 23 workbooks in `test_result/` all use the same 300 MedQA USMLE questions and reference answers copied verbatim from the original MAM evaluation workbooks. Question cells contain the original stems and answer choices without prompt wrappers. The files previously named MedMCQA have been renamed to MedQA USMLE. [Browse result files](test_result)
+The `test_result/` directory contains 23 MedQA USMLE workbooks, each with the same 300 questions and reference answers. Question cells contain stems and answer choices without prompt wrappers. [Browse result files](test_result)
 
-These are constructed combinations of existing MAM responses, not outputs from a TRUSS-Med or Jamba run. The selected questions are the first 300 in original source order for which the nine MAM workbooks provide both a validated correct response and a validated incorrect response. Responses and predictions are copied verbatim. The [source manifest](test_result/results_manifest.json) records source filenames, hashes, row mappings, selection seeds, target rates, and actual counts.
+These are constructed result sets, not outputs from a TRUSS-Med or Jamba run.
 
-Target percentages retain the previous workbook filename values. With 300 questions, correct counts are rounded to the nearest integer. `Sheet1` retains the five columns `Question`, `Correct Answer`, `Predicted Option`, `Generated Text`, and `Correct`. `Sheet2` calculates correct and incorrect counts, total, and accuracy from `Sheet1`, and includes a screenshot of those statistics.
+Target percentages retain the original values. With 300 questions, correct counts are rounded to the nearest integer. `Sheet1` contains `Question`, `Correct Answer`, `Predicted Option`, `Generated Text`, and `Correct`. `Sheet2` calculates correct and incorrect counts, total, and accuracy from `Sheet1`, and includes a screenshot of those statistics.
 
 #### K:T:S configuration results (8 workbooks)
 
@@ -550,7 +550,7 @@ All files below use MedQA USMLE. `K:T:S=1:1:0` excludes the state-space module, 
 | TRUSS-Med | 1:1:1 | Inference with fine-tuning | 67.52% | 67.67% (203/300) | [Download Excel](test_result/67.52_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) |
 | TRUSS-Med | 1:1:1 | Inference with fine-tuning | 75.25% | 75.33% (226/300) | [Download Excel](test_result/75.25_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) |
 
-[Download all 8 Excel files in this table (ZIP, 2.2 MiB)](test_result/TRUSS_KTS_results_8.zip?raw=true) The archive also includes `SOURCE.json`.
+[Download all 8 Excel files in this table (ZIP, 2.1 MiB)](test_result/TRUSS_KTS_results_8.zip?raw=true)
 
 #### 94B MoE expert-count results (15 workbooks)
 
@@ -564,4 +564,4 @@ All 15 files use the same MedQA USMLE questions above. The model identifier is `
 | 8 | [65.33% / 65.33% · Download](test_result/65.33_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_basic.xlsx?raw=true) | [61.67% / 61.67% · Download](test_result/61.67_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference.xlsx?raw=true) | [72.81% / 72.67% · Download](test_result/72.81_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference_finetuning.xlsx?raw=true) |
 | 16 | [23.33% / 23.33% · Download](test_result/23.33_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_basic.xlsx?raw=true) | [16.00% / 16.00% · Download](test_result/16.00_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference.xlsx?raw=true) | [55.42% / 55.33% · Download](test_result/55.42_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference_finetuning.xlsx?raw=true) |
 
-[Download all 15 Excel files in this table (ZIP, 4.1 MiB)](test_result/TRUSS_94B_MoE_examples_15.zip?raw=true) The archive also includes `SOURCE.json`.
+[Download all 15 Excel files in this table (ZIP, 3.9 MiB)](test_result/TRUSS_94B_MoE_examples_15.zip?raw=true)
