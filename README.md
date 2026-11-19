@@ -401,7 +401,38 @@ huggingface-cli download infgrad/stella-base-en-v2 --local-dir models/stella-bas
 )
 ```
 
-以使用题干和选项检索的 Mainland 训练集为例，输出为 `data/MedQA/data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train.json`。转换前先核对样本数和 `knowledges_for_llm` 中的检索内容。
+以使用题干和选项检索的 Mainland 训练集为例，输出为 `data/MedQA/data_clean/questions_with_knowledge/Mainland/train/retrive_use_question_with_options/stella-base-zh-v2/train.json`。检索知识保存在每条记录的 `retrieve_info.knowledges_info.knowledges` 中，先核对样本数和这里的知识段落。
+
+### 检索知识字段整理
+
+训练集和评测集均需先将知识段落整理到 `knowledges_for_llm`，供后续格式化脚本写入 `user` 消息。下面命令沿用原批处理函数 `load_raw_json_data_with_process` 的规则，将检索知识用两个换行符连接。在仓库根目录执行，生成两份带知识字段的本地 JSON。 [原字段整理逻辑](data/MedQA/utils/MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_json_data.py#L191)
+
+```bash
+python - <<'PY'
+import json
+from pathlib import Path
+
+retrieval_dir = Path("data/MedQA/data_clean/questions_with_knowledge/Mainland")
+output_dir = Path("data/local")
+output_dir.mkdir(parents=True, exist_ok=True)
+
+for split in ("train", "test"):
+    source = retrieval_dir / split / "retrive_use_question_with_options/stella-base-zh-v2" / f"{split}.json"
+    examples = json.loads(source.read_text(encoding="utf-8"))
+    if isinstance(examples, dict):
+        examples = examples["data"]
+
+    for example in examples:
+        knowledge_list = example["retrieve_info"]["knowledges_info"]["knowledges"]
+        example["knowledges_for_llm"] = "\n\n".join(knowledge_list)
+
+    destination = output_dir / f"Mainland_{split}_with_knowledge.json"
+    destination.write_text(json.dumps(examples, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Prepared {len(examples)} examples: {destination}")
+PY
+```
+
+训练解析以 `data/local/Mainland_train_with_knowledge.json` 为输入。评测格式化使用 `data/local/Mainland_test_with_knowledge.json`。
 
 ### 训练解析生成
 
@@ -438,9 +469,9 @@ PY
 
 ### 训练集与评测集格式化
 
-上面的豆包示例用于验证一次 API 调用。批量生成豆包解析需要从外部调用流程取得结果，再按题目 ID 写入检索后的训练 JSON 的 `chatgpt_explain` 字段。仓库中的现有批处理脚本提供 Kimi 等接口。 [批处理脚本](data/MedQA/utils/MultiProcessingLLM/openai_api_llm.py) · [原解析提示词](data/MedQA/utils/MultiProcessingLLM/prompt_config_of_generate_explain.json)
+上面的豆包示例用于验证一次 API 调用。批量生成豆包解析时，以已整理的 `data/local/Mainland_train_with_knowledge.json` 为输入，从外部调用流程取得结果，再按题目 ID 写入 `chatgpt_explain` 字段。仓库中的现有批处理脚本提供 Kimi 等接口。 [批处理脚本](data/MedQA/utils/MultiProcessingLLM/openai_api_llm.py) · [原解析提示词](data/MedQA/utils/MultiProcessingLLM/prompt_config_of_generate_explain.json)
 
-保留检索输出里的 `id`、`meta_info`、`question_with_options`、`answer_with_idx`、`answer_idx`、`knowledges_for_llm` 和 `retrieve_info`。以使用题干和选项检索的 Mainland 题库为例，先运行 `mkdir -p data/local`，将带豆包解析的训练 JSON 数组保存为 `data/local/Mainland_train_with_doubao.json`，再生成微调与评测文件。评测输入使用第 3 步中检索后的 `test.json`。
+保留知识整理后记录中的 `id`、`meta_info`、`question_with_options`、`answer_with_idx`、`answer_idx`、`knowledges_for_llm` 和 `retrieve_info`。将带豆包解析的训练 JSON 数组保存为 `data/local/Mainland_train_with_doubao.json`，再生成微调与评测文件。评测输入使用已整理知识字段的 `data/local/Mainland_test_with_knowledge.json`。
 
 ```bash
 (
@@ -450,7 +481,7 @@ PY
         --dataset_name RAG_MedQA_Mainland_train_doubao \
         --output_json_data_dir ../../local
     python format_json_dataset_for_training_llm.py \
-        --input_json_data_path ../data_clean/questions_with_knowledge/Mainland/test/retrive_use_question_with_options/stella-base-zh-v2/test.json \
+        --input_json_data_path ../../local/Mainland_test_with_knowledge.json \
         --dataset_name RAG_MedQA_Mainland_eval \
         --output_json_data_dir ../../local \
         --do_test

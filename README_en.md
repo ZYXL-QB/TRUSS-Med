@@ -196,6 +196,37 @@ The examples below use the question and answer options for retrieval in each Mai
 )
 ```
 
+### Prepare retrieved knowledge
+
+For both training and evaluation, populate `knowledges_for_llm` before formatting the records into `user` messages. The command below follows the existing `load_raw_json_data_with_process` function by joining the passages in `retrieve_info.knowledges_info.knowledges` with two newline characters. Run it from the repository root to create the two local JSON files. [Original field preparation logic](data/MedQA/utils/MultiProcessingLLM/multiprocess_using_chatgpt_input_with_prompt_and_json_data.py#L191)
+
+```bash
+python - <<'PY'
+import json
+from pathlib import Path
+
+retrieval_dir = Path("data/MedQA/data_clean/questions_with_knowledge/Mainland")
+output_dir = Path("data/local")
+output_dir.mkdir(parents=True, exist_ok=True)
+
+for split in ("train", "test"):
+    source = retrieval_dir / split / "retrive_use_question_with_options/stella-base-zh-v2" / f"{split}.json"
+    examples = json.loads(source.read_text(encoding="utf-8"))
+    if isinstance(examples, dict):
+        examples = examples["data"]
+
+    for example in examples:
+        knowledge_list = example["retrieve_info"]["knowledges_info"]["knowledges"]
+        example["knowledges_for_llm"] = "\n\n".join(knowledge_list)
+
+    destination = output_dir / f"Mainland_{split}_with_knowledge.json"
+    destination.write_text(json.dumps(examples, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Prepared {len(examples)} examples: {destination}")
+PY
+```
+
+Use `data/local/Mainland_train_with_knowledge.json` to generate training explanations. Use `data/local/Mainland_test_with_knowledge.json` to format the evaluation split.
+
 ### Training explanations and dataset formatting
 
 Enable a Doubao text model in the Volcengine Ark console and obtain its model or endpoint ID and API key. Set the two environment variables in the same terminal and run a one-message connectivity check. [Ark quick start](https://docs.volcengine.com/docs/ark/quick-start?lang=en) · [OpenAI-compatible API](https://docs.volcengine.com/docs/ark/compatible-with-openai-sdk?lang=en)
@@ -225,9 +256,9 @@ print(response.choices[0].message.content)
 PY
 ```
 
-Obtain the training explanations from your Ark batch workflow. Join the explanations to the retrieved training examples by `id` and put each explanation in `chatgpt_explain`. Keep the existing metadata, retrieval passages, question and answer fields. The repository's existing batch client contains integrations such as Kimi. [Batch client](data/MedQA/utils/MultiProcessingLLM/openai_api_llm.py)
+Use the prepared `data/local/Mainland_train_with_knowledge.json` as input to your Ark batch workflow. Join the training explanations to these examples by `id` and put each explanation in `chatgpt_explain`. Preserve `knowledges_for_llm`, the metadata, retrieval passages, question and answer fields. The repository's existing batch client contains integrations such as Kimi. [Batch client](data/MedQA/utils/MultiProcessingLLM/openai_api_llm.py)
 
-Create `data/local/` and save the combined JSON array as `data/local/Mainland_train_with_doubao.json`. Format it for training and convert the retrieved test split with `--do_test`. That flag leaves the assistant response out of the evaluation conversation and retains the reference answer.
+Save the combined JSON array as `data/local/Mainland_train_with_doubao.json`. Format it for training and format `data/local/Mainland_test_with_knowledge.json` with `--do_test`. That flag leaves the assistant response out of the evaluation conversation and retains the reference answer.
 
 ```bash
 (
@@ -237,7 +268,7 @@ Create `data/local/` and save the combined JSON array as `data/local/Mainland_tr
         --dataset_name RAG_MedQA_Mainland_train_doubao \
         --output_json_data_dir ../../local
     python format_json_dataset_for_training_llm.py \
-        --input_json_data_path ../data_clean/questions_with_knowledge/Mainland/test/retrive_use_question_with_options/stella-base-zh-v2/test.json \
+        --input_json_data_path ../../local/Mainland_test_with_knowledge.json \
         --dataset_name RAG_MedQA_Mainland_eval \
         --output_json_data_dir ../../local \
         --do_test
