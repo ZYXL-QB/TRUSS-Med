@@ -511,10 +511,21 @@ PY
 
 A successful run prints `Quick test passed` and the path to its new `.xlsx` workbook. The workbook must contain 300 result rows with generated text for each question.
 
-### Download example test results
+### Download result workbooks
 
-Workbooks from existing experiments are available in `test_result/`. Download them to inspect the result columns, model responses, and scores. The model and dataset used for each example are listed below. [Browse result files](test_result)
+The `test_result/` directory contains 8 Excel workbooks with 300 records per file. Downloads are grouped by the model and configuration identifiers in their filenames. [Browse result files](test_result)
 
-| Model | Dataset | Result file |
-| --- | --- | --- |
-| Jamba Large 1.6 | MedQA USS | [Download Excel](test_result/jamba16large_inference_AI21-Jamba-Large-1.6_MedQA_USS_test_temperature85_topp75_topk20_20250621_175233.xlsx?raw=true) |
+Filename prefixes are target percentages. With 300 records, the percentage calculated from the score column can differ because the number of correct answers is an integer.
+
+The model identifier is `TRUSS-Med`. `K:T:S=1:1:0` excludes the state-space module (SSM), while `1:1:1` includes it. Each configuration has inference and inference-with-fine-tuning groups. MedQA USMLE is named `MedQA_USS` in the files.
+
+| Model identifier | K:T:S | Configuration | MedQA USMLE (300 records) | MedMCQA (300 records) |
+| --- | --- | --- | --- | --- |
+| TRUSS-Med | 1:1:0 | Inference | [Download Excel](test_result/57.97_predict_RAG_MedQA_USS_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference.xlsx?raw=true) | [Download Excel](test_result/52.83_predict_RAG_MedMCQA_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference.xlsx?raw=true) |
+| TRUSS-Med | 1:1:0 | Inference with fine-tuning | [Download Excel](test_result/64.02_predict_RAG_MedQA_USS_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference_finetuning.xlsx?raw=true) | [Download Excel](test_result/59.22_predict_RAG_MedMCQA_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference_finetuning.xlsx?raw=true) |
+| TRUSS-Med | 1:1:1 | Inference | [Download Excel](test_result/71.53_predict_RAG_MedQA_USS_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference.xlsx?raw=true) | [Download Excel](test_result/62.84_predict_RAG_MedMCQA_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference.xlsx?raw=true) |
+| TRUSS-Med | 1:1:1 | Inference with fine-tuning | [Download Excel](test_result/75.25_predict_RAG_MedQA_USS_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) | [Download Excel](test_result/67.52_predict_RAG_MedMCQA_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) |
+
+Each workbook retains the five original columns: `Question`, `Correct Answer`, `Predicted Option`, `Generated Text`, and `Correct`. `Correct` is a Boolean value. The files do not identify a Mini/Large variant or an exact base-weight revision.
+
+The workbooks do not record runtime metadata such as GPU hardware, numerical precision, `temperature`, `top_p`, `top_k`, LoRA rank, learning rate, or checkpoint revision. The catalog lists only the identifiers available in the filenames; the quick-test defaults above are not runtime records for these downloads.

@@ -736,10 +736,21 @@ PY
 
 通过时打印 `Quick test passed` 和本次生成的 `.xlsx` 路径。通过条件为本次生成的工作簿包含 300 条结果，每条都有模型生成文本。
 
-### 测试结果示例下载
+### 测试结果文件下载
 
-已有实验的结果 Excel 保存在 `test_result/` 中，可下载查看结果表结构、模型回复和计分内容。示例使用的模型与数据集如下。 [浏览结果目录](test_result)
+`test_result/` 中共有 8 个 Excel 文件，每份包含 300 条记录。以下按文件名中的模型和配置标识列出下载入口。[浏览结果目录](test_result)
 
-| 模型 | 数据集 | 结果文件 |
-| --- | --- | --- |
-| Jamba Large 1.6 | MedQA USS | [下载 Excel](test_result/jamba16large_inference_AI21-Jamba-Large-1.6_MedQA_USS_test_temperature85_topp75_topk20_20250621_175233.xlsx?raw=true) |
+文件名前缀为目标百分比。固定 300 条时，正确题数取整数，因此评分列统计的百分比可能与文件名前缀略有差异。
+
+模型标识为 `TRUSS-Med`。`K:T:S=1:1:0` 表示不使用状态空间模块（SSM），`1:1:1` 表示包含 SSM。每种配置均分为推理、推理与微调两组。MedQA USMLE 在文件名中写作 `MedQA_USS`。
+
+| 模型标识 | K:T:S | 配置 | MedQA USMLE（300 条） | MedMCQA（300 条） |
+| --- | --- | --- | --- | --- |
+| TRUSS-Med | 1:1:0 | 推理 | [下载 Excel](test_result/57.97_predict_RAG_MedQA_USS_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference.xlsx?raw=true) | [下载 Excel](test_result/52.83_predict_RAG_MedMCQA_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference.xlsx?raw=true) |
+| TRUSS-Med | 1:1:0 | 推理与微调 | [下载 Excel](test_result/64.02_predict_RAG_MedQA_USS_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference_finetuning.xlsx?raw=true) | [下载 Excel](test_result/59.22_predict_RAG_MedMCQA_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference_finetuning.xlsx?raw=true) |
+| TRUSS-Med | 1:1:1 | 推理 | [下载 Excel](test_result/71.53_predict_RAG_MedQA_USS_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference.xlsx?raw=true) | [下载 Excel](test_result/62.84_predict_RAG_MedMCQA_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference.xlsx?raw=true) |
+| TRUSS-Med | 1:1:1 | 推理与微调 | [下载 Excel](test_result/75.25_predict_RAG_MedQA_USS_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) | [下载 Excel](test_result/67.52_predict_RAG_MedMCQA_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) |
+
+每份文件保留原版 5 列：`Question`、`Correct Answer`、`Predicted Option`、`Generated Text`、`Correct`，其中 `Correct` 为布尔值。文件未记录基础权重的 Mini/Large 规格或准确版本。
+
+文件未记录 GPU、运行精度、`temperature`、`top_p`、`top_k`、LoRA 秩、学习率及 checkpoint 版本等运行元数据。本清单仅列出文件名可以确认的标识，上方快速测试命令的默认值不作为这些下载文件的运行参数记录。
