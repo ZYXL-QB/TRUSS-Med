@@ -752,3 +752,5 @@ PY
 | TRUSS-Med | 1:1:1 | 推理与微调 | [下载 Excel](test_result/75.25_predict_RAG_MedQA_USS_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) | [下载 Excel](test_result/67.52_predict_RAG_MedMCQA_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) |
 
 每份文件保留原版 5 列：`Question`、`Correct Answer`、`Predicted Option`、`Generated Text`、`Correct`，其中 `Correct` 为布尔值。文件未记录基础权重的 Mini/Large 规格或准确版本。
+
+`Sheet2` 列出正确数、错误数、总数及准确率，并附统计图。统计值均由同一文件的 `Sheet1` 评分列计算。

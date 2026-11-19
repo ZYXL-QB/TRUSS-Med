@@ -543,3 +543,5 @@ The model identifier is `TRUSS-Med`. `K:T:S=1:1:0` excludes the state-space modu
 | TRUSS-Med | 1:1:1 | Inference with fine-tuning | [Download Excel](test_result/75.25_predict_RAG_MedQA_USS_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) | [Download Excel](test_result/67.52_predict_RAG_MedMCQA_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) |
 
 Each workbook retains the five original columns: `Question`, `Correct Answer`, `Predicted Option`, `Generated Text`, and `Correct`. `Correct` is a Boolean value. The files do not identify a Mini/Large variant or an exact base-weight revision.
+
+`Sheet2` contains the correct count, incorrect count, total, and accuracy, together with an embedded summary image. The statistics are calculated from the `Correct` column in the same workbook’s `Sheet1`.
