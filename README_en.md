@@ -254,6 +254,13 @@ EVAL_DATA=local/RAG_MedQA_Mainland_eval.json
 
 The ModelScope repository stores Jamba Mini 1.6 under `mini/` and Large 1.6 under `large/`. [Browse the model files on ModelScope](https://modelscope.cn/models/zyxl2026/Jamba/files) · `https://modelscope.cn/models/zyxl2026/Jamba/files`
 
+Run the commands in this section from the repository root to download the weights directly into this repository's `model/` directory. Mini and Large use the subdirectories below. Subsequent inference, fine-tuning, and quick-test commands use these local paths.
+
+| Model | Local download directory |
+| --- | --- |
+| Jamba Mini 1.6 | `model/Jamba-1.6/mini/` |
+| Jamba Large 1.6 | `model/Jamba-1.6/large/` |
+
 Install the ModelScope CLI in the Jamba environment and set the local model paths. Allow disk space for the model weights, an ablation copy, and merged LoRA weights.
 
 ```bash
@@ -265,6 +272,7 @@ JAMBA_REVISION=master
 JAMBA_DIR=model/Jamba-1.6
 MINI_MODEL="$JAMBA_DIR/mini"
 LARGE_MODEL="$JAMBA_DIR/large"
+mkdir -p "$JAMBA_DIR"
 ```
 
 Download `mini/` for Mini inference or fine-tuning. Section 6 provides the Large download command. The scripts use the downloaded local model directories.

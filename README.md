@@ -469,6 +469,13 @@ EVAL_DATA=local/RAG_MedQA_Mainland_eval.json
 
 Jamba Mini 1.6 和 Large 1.6 权重分别位于魔搭仓库的 `mini/` 和 `large/` 目录。 [打开魔搭模型文件](https://modelscope.cn/models/zyxl2026/Jamba/files) · `https://modelscope.cn/models/zyxl2026/Jamba/files`
 
+从仓库根目录执行本节命令，模型权重会直接下载到本仓库的 `model/` 目录。Mini 和 Large 分别保存到下表所示的子目录，后续推理、微调及快速测试均使用这些本地路径。
+
+| 模型 | 下载后的本地目录 |
+| --- | --- |
+| Jamba Mini 1.6 | `model/Jamba-1.6/mini/` |
+| Jamba Large 1.6 | `model/Jamba-1.6/large/` |
+
 在 Jamba 环境安装魔搭 CLI，并设置本地模型路径。为模型权重、消融副本和合并后的 LoRA 权重预留磁盘空间。
 
 ```bash
@@ -480,6 +487,7 @@ JAMBA_REVISION=master
 JAMBA_DIR=model/Jamba-1.6
 MINI_MODEL="$JAMBA_DIR/mini"
 LARGE_MODEL="$JAMBA_DIR/large"
+mkdir -p "$JAMBA_DIR"
 ```
 
 运行 Mini 推理或微调时，下载 `mini/`。Large 的下载命令见第 6 步。后续脚本接收下载后的本地模型目录。
