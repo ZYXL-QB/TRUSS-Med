@@ -285,16 +285,32 @@ EVAL_DATA=local/RAG_MedQA_Mainland_eval.json
 
 The ModelScope repository stores Jamba Mini 1.6 under `mini/` and Large 1.6 under `large/`. [Browse the model files on ModelScope](https://modelscope.cn/models/zyxl2026/Jamba/files) · `https://modelscope.cn/models/zyxl2026/Jamba/files`
 
-Run the commands in this section from the repository root to download the weights directly into this repository's `model/` directory. Mini and Large use the subdirectories below. Subsequent inference, fine-tuning, and quick-test commands use these local paths.
+Before running inference or fine-tuning, download the model weights into the [`model/`](model/) directory of your cloned repository. Open a terminal in the repository root, where `README_en.md` is located, and run the commands below. They create `model/Jamba-1.6/` and save the selected model under `mini/` or `large/`.
+
+The local directory layout should be:
+
+```text
+TRUSS-Med/
+├── model/
+│   └── Jamba-1.6/
+│       ├── mini/    # Jamba Mini 1.6 model files
+│       └── large/   # Jamba Large 1.6 model files
+└── jamba/
+```
+
+Download the variant required for your run. Subsequent inference, fine-tuning, and quick-test commands read the weights from these local directories.
 
 | Model | Local download directory |
 | --- | --- |
 | Jamba Mini 1.6 | `model/Jamba-1.6/mini/` |
 | Jamba Large 1.6 | `model/Jamba-1.6/large/` |
 
+If you have already downloaded the weights elsewhere, place the complete model files in the corresponding directory above. Each model directory must contain its `config.json`, `model.safetensors.index.json`, tokenizer files, and all weight shards.
+
 Install the ModelScope CLI in the Jamba environment and set the local model paths. Allow disk space for the model weights, an ablation copy, and merged LoRA weights.
 
 ```bash
+# Run from the repository root. Model files are stored under ./model/.
 conda activate "$TRUSS_JAMBA_ENV"
 python -m pip install modelscope-hub==0.7.1
 
@@ -306,7 +322,7 @@ LARGE_MODEL="$JAMBA_DIR/large"
 mkdir -p "$JAMBA_DIR"
 ```
 
-Download `mini/` for Mini inference or fine-tuning. Section 6 provides the Large download command. The scripts use the downloaded local model directories.
+Run the following block to download Mini into `model/Jamba-1.6/mini/`. The checks confirm that the model configuration and weight index are in that directory. For Large, use the download block in Section 6, which writes to `model/Jamba-1.6/large/`.
 
 ```bash
 ms-hub download "$JAMBA_REPO" --revision "$JAMBA_REVISION" \
@@ -435,7 +451,7 @@ Complete the [Jamba environment setup](#1-environment-setup), then run the follo
 
 ### 1. Download the model
 
-Download the enterprise ModelScope repository's `large/` weights into `model/Jamba-1.6/large/`. The initial download is approximately 797.12 GB. Rerun the same block to resume an interrupted download. [ModelScope model files](https://modelscope.cn/models/zyxl2026/Jamba/files) · `https://modelscope.cn/models/zyxl2026/Jamba/files`
+From the repository root, run the block below to create the local `model/` directory and download the enterprise ModelScope repository's `large/` weights into `model/Jamba-1.6/large/`. The quick test in Step 2 loads the model directly from that directory. The initial download is approximately 797.12 GB. Rerun the same block to resume an interrupted download. [ModelScope model files](https://modelscope.cn/models/zyxl2026/Jamba/files) · `https://modelscope.cn/models/zyxl2026/Jamba/files`
 
 ```bash
 (
