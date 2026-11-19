@@ -529,9 +529,11 @@ A successful run prints `Quick test passed` and the path to its new `.xlsx` work
 
 ### Download result workbooks
 
-The `test_result/` directory contains 8 Excel workbooks with 300 records per file. Downloads are grouped by the model and configuration identifiers in their filenames. [Browse result files](test_result)
+The `test_result/` directory contains 23 Excel workbooks with 300 records per file. Downloads are grouped by the model and configuration identifiers in their filenames. [Browse result files](test_result)
 
 Filename prefixes are target percentages. With 300 records, the percentage calculated from the score column can differ because the number of correct answers is an integer.
+
+#### K:T:S configuration results (8 workbooks)
 
 The model identifier is `TRUSS-Med`. `K:T:S=1:1:0` excludes the state-space module (SSM), while `1:1:1` includes it. Each configuration has inference and inference-with-fine-tuning groups. MedQA USMLE is named `MedQA_USS` in the files.
 
@@ -545,3 +547,19 @@ The model identifier is `TRUSS-Med`. `K:T:S=1:1:0` excludes the state-space modu
 Each workbook retains the five original columns: `Question`, `Correct Answer`, `Predicted Option`, `Generated Text`, and `Correct`. `Correct` is a Boolean value. The files do not identify a Mini/Large variant or an exact base-weight revision.
 
 `Sheet2` contains the correct count, incorrect count, total, and accuracy, together with an embedded summary image. The statistics are calculated from the `Correct` column in the same workbook’s `Sheet1`.
+
+#### 94B MoE expert-count examples (15 workbooks)
+
+The 15 additional files are synthetic examples constructed to match target accuracies. The corresponding model configurations were not run.
+
+All 15 files use 300 MedMCQA questions. The model identifier is `TRUSS-Med-94B`. Here `k` is the number of experts selected per token, and is separate from the generation sampling parameter `top_k`.
+
+| Experts per token (k) | Base model | Retrieval-augmented inference | Retrieval and fine-tuning |
+| ---: | --- | --- | --- |
+| 2 | [58.00 · Download](test_result/58.00_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_basic_SIMULATED.xlsx?raw=true) | [59.82 · Download](test_result/59.82_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_inference_SIMULATED.xlsx?raw=true) | [62.62 · Download](test_result/62.62_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_inference_finetuning_SIMULATED.xlsx?raw=true) |
+| 4 | [64.67 · Download](test_result/64.67_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_basic_SIMULATED.xlsx?raw=true) | [55.67 · Download](test_result/55.67_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_inference_SIMULATED.xlsx?raw=true) | [68.72 · Download](test_result/68.72_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_inference_finetuning_SIMULATED.xlsx?raw=true) |
+| 6 | [67.67 · Download](test_result/67.67_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_basic_SIMULATED.xlsx?raw=true) | [60.33 · Download](test_result/60.33_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_inference_SIMULATED.xlsx?raw=true) | [69.91 · Download](test_result/69.91_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_inference_finetuning_SIMULATED.xlsx?raw=true) |
+| 8 | [65.33 · Download](test_result/65.33_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_basic_SIMULATED.xlsx?raw=true) | [61.67 · Download](test_result/61.67_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference_SIMULATED.xlsx?raw=true) | [72.81 · Download](test_result/72.81_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference_finetuning_SIMULATED.xlsx?raw=true) |
+| 16 | [23.33 · Download](test_result/23.33_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_basic_SIMULATED.xlsx?raw=true) | [16.00 · Download](test_result/16.00_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference_SIMULATED.xlsx?raw=true) | [55.42 · Download](test_result/55.42_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference_finetuning_SIMULATED.xlsx?raw=true) |
+
+Each example is marked in its filename, generated response, statistics page, and summary image. Correct counts are calculated by multiplying the target rate (for example, `58.00%`) by 300 and rounding to the nearest integer. Actual accuracy is shown in `Sheet2`.

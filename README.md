@@ -738,9 +738,11 @@ PY
 
 ### 测试结果文件下载
 
-`test_result/` 中共有 8 个 Excel 文件，每份包含 300 条记录。以下按文件名中的模型和配置标识列出下载入口。[浏览结果目录](test_result)
+`test_result/` 中共有 23 个 Excel 文件，每份包含 300 条记录。以下按文件名中的模型和配置标识列出下载入口。[浏览结果目录](test_result)
 
 文件名前缀为目标百分比。固定 300 条时，正确题数取整数，因此评分列统计的百分比可能与文件名前缀略有差异。
+
+#### K:T:S 配置结果（8 份）
 
 模型标识为 `TRUSS-Med`。`K:T:S=1:1:0` 表示不使用状态空间模块（SSM），`1:1:1` 表示包含 SSM。每种配置均分为推理、推理与微调两组。MedQA USMLE 在文件名中写作 `MedQA_USS`。
 
@@ -754,3 +756,19 @@ PY
 每份文件保留原版 5 列：`Question`、`Correct Answer`、`Predicted Option`、`Generated Text`、`Correct`，其中 `Correct` 为布尔值。文件未记录基础权重的 Mini/Large 规格或准确版本。
 
 `Sheet2` 列出正确数、错误数、总数及准确率，并附统计图。统计值均由同一文件的 `Sheet1` 评分列计算。
+
+#### 94B MoE 专家数量示例（15 份）
+
+新增的 15 组文件按目标准确率构造，未执行相应配置的模型推理。
+
+新增 15 份均使用 300 条 MedMCQA 问题，模型标识为 `TRUSS-Med-94B`。这里的 `k` 是每个 token 选择的专家数量，与文本生成采样参数 `top_k` 不同。
+
+| 每 token 专家数（k） | 基础模型 | 检索增强推理 | 检索增强推理与微调 |
+| ---: | --- | --- | --- |
+| 2 | [58.00 · 下载](test_result/58.00_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_basic_SIMULATED.xlsx?raw=true) | [59.82 · 下载](test_result/59.82_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_inference_SIMULATED.xlsx?raw=true) | [62.62 · 下载](test_result/62.62_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_inference_finetuning_SIMULATED.xlsx?raw=true) |
+| 4 | [64.67 · 下载](test_result/64.67_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_basic_SIMULATED.xlsx?raw=true) | [55.67 · 下载](test_result/55.67_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_inference_SIMULATED.xlsx?raw=true) | [68.72 · 下载](test_result/68.72_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_inference_finetuning_SIMULATED.xlsx?raw=true) |
+| 6 | [67.67 · 下载](test_result/67.67_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_basic_SIMULATED.xlsx?raw=true) | [60.33 · 下载](test_result/60.33_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_inference_SIMULATED.xlsx?raw=true) | [69.91 · 下载](test_result/69.91_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_inference_finetuning_SIMULATED.xlsx?raw=true) |
+| 8 | [65.33 · 下载](test_result/65.33_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_basic_SIMULATED.xlsx?raw=true) | [61.67 · 下载](test_result/61.67_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference_SIMULATED.xlsx?raw=true) | [72.81 · 下载](test_result/72.81_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference_finetuning_SIMULATED.xlsx?raw=true) |
+| 16 | [23.33 · 下载](test_result/23.33_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_basic_SIMULATED.xlsx?raw=true) | [16.00 · 下载](test_result/16.00_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference_SIMULATED.xlsx?raw=true) | [55.42 · 下载](test_result/55.42_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference_finetuning_SIMULATED.xlsx?raw=true) |
+
+新增示例在文件名、回复正文、统计页及统计图中标明数据类型。正确题数由目标准确率（如 `58.00%`）乘以 300 后四舍五入得到，实际准确率见 `Sheet2`。
