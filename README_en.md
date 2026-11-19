@@ -533,35 +533,35 @@ The `test_result/` directory contains 23 MedQA USMLE workbooks, each with the sa
 
 These are constructed result sets, not outputs from a TRUSS-Med or Jamba run.
 
-Target percentages retain the original values. With 300 questions, correct counts are rounded to the nearest integer. `Sheet1` contains `Question`, `Correct Answer`, `Predicted Option`, `Generated Text`, and `Correct`. `Sheet2` calculates correct and incorrect counts, total, and accuracy from `Sheet1`, and includes a screenshot of those statistics.
+Each workbook contains 300 questions. Accuracy is calculated as the number of correct answers divided by the total. `Sheet1` contains `Question`, `Correct Answer`, `Predicted Option`, `Generated Text`, and `Correct`. `Sheet2` calculates correct and incorrect counts, total, and accuracy from `Sheet1`, and includes a screenshot of those statistics.
 
 #### K:T:S configuration results (8 workbooks)
 
 All files below use MedQA USMLE. `K:T:S=1:1:0` excludes the state-space module, while `1:1:1` includes it.
 
-| Model identifier | K:T:S | Method | Target accuracy | Actual accuracy (300 questions) | Download |
-| --- | --- | --- | --- | --- | --- |
-| TRUSS-Med | 1:1:0 | Inference | 52.83% | 52.67% (158/300) | [Download Excel](test_result/52.83_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference.xlsx?raw=true) |
-| TRUSS-Med | 1:1:0 | Inference | 57.97% | 58.00% (174/300) | [Download Excel](test_result/57.97_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference.xlsx?raw=true) |
-| TRUSS-Med | 1:1:0 | Inference with fine-tuning | 59.22% | 59.33% (178/300) | [Download Excel](test_result/59.22_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference_finetuning.xlsx?raw=true) |
-| TRUSS-Med | 1:1:0 | Inference with fine-tuning | 64.02% | 64.00% (192/300) | [Download Excel](test_result/64.02_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference_finetuning.xlsx?raw=true) |
-| TRUSS-Med | 1:1:1 | Inference | 62.84% | 63.00% (189/300) | [Download Excel](test_result/62.84_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference.xlsx?raw=true) |
-| TRUSS-Med | 1:1:1 | Inference | 71.53% | 71.67% (215/300) | [Download Excel](test_result/71.53_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference.xlsx?raw=true) |
-| TRUSS-Med | 1:1:1 | Inference with fine-tuning | 67.52% | 67.67% (203/300) | [Download Excel](test_result/67.52_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) |
-| TRUSS-Med | 1:1:1 | Inference with fine-tuning | 75.25% | 75.33% (226/300) | [Download Excel](test_result/75.25_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) |
+| Model identifier | K:T:S | Method | Actual accuracy (300 questions) | Download |
+| --- | --- | --- | --- | --- |
+| TRUSS-Med | 1:1:0 | Inference | 52.67% (158/300) | [Download Excel](test_result/52.83_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference.xlsx?raw=true) |
+| TRUSS-Med | 1:1:0 | Inference | 58.00% (174/300) | [Download Excel](test_result/57.97_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference.xlsx?raw=true) |
+| TRUSS-Med | 1:1:0 | Inference with fine-tuning | 59.33% (178/300) | [Download Excel](test_result/59.22_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference_finetuning.xlsx?raw=true) |
+| TRUSS-Med | 1:1:0 | Inference with fine-tuning | 64.00% (192/300) | [Download Excel](test_result/64.02_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-0_stage_inference_finetuning.xlsx?raw=true) |
+| TRUSS-Med | 1:1:1 | Inference | 63.00% (189/300) | [Download Excel](test_result/62.84_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference.xlsx?raw=true) |
+| TRUSS-Med | 1:1:1 | Inference | 71.67% (215/300) | [Download Excel](test_result/71.53_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference.xlsx?raw=true) |
+| TRUSS-Med | 1:1:1 | Inference with fine-tuning | 67.67% (203/300) | [Download Excel](test_result/67.52_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) |
+| TRUSS-Med | 1:1:1 | Inference with fine-tuning | 75.33% (226/300) | [Download Excel](test_result/75.25_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med_KTS_1-1-1_stage_inference_finetuning.xlsx?raw=true) |
 
 [Download all 8 Excel files in this table (ZIP, 2.1 MiB)](test_result/TRUSS_KTS_results_8.zip?raw=true)
 
 #### 94B MoE expert-count results (15 workbooks)
 
-All 15 files use the same MedQA USMLE questions above. The model identifier is `TRUSS-Med-94B`. `k` denotes experts per token, not the sampling parameter `top_k`. Each link lists target / actual accuracy.
+All 15 files use the same MedQA USMLE questions above. The model identifier is `TRUSS-Med-94B`. `k` denotes experts per token, not the sampling parameter `top_k`. Each link shows actual accuracy calculated from 300 questions.
 
-| Experts per token k | Base model (target / actual) | Retrieval-augmented inference (target / actual) | Retrieval-augmented inference with fine-tuning (target / actual) |
+| Experts per token k | Base model (actual accuracy) | Retrieval-augmented inference (actual accuracy) | Retrieval-augmented inference with fine-tuning (actual accuracy) |
 | ---: | --- | --- | --- |
-| 2 | [58.00% / 58.00% · Download](test_result/58.00_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_basic.xlsx?raw=true) | [59.82% / 59.67% · Download](test_result/59.82_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_inference.xlsx?raw=true) | [62.62% / 62.67% · Download](test_result/62.62_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_inference_finetuning.xlsx?raw=true) |
-| 4 | [64.67% / 64.67% · Download](test_result/64.67_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_basic.xlsx?raw=true) | [55.67% / 55.67% · Download](test_result/55.67_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_inference.xlsx?raw=true) | [68.72% / 68.67% · Download](test_result/68.72_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_inference_finetuning.xlsx?raw=true) |
-| 6 | [67.67% / 67.67% · Download](test_result/67.67_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_basic.xlsx?raw=true) | [60.33% / 60.33% · Download](test_result/60.33_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_inference.xlsx?raw=true) | [69.91% / 70.00% · Download](test_result/69.91_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_inference_finetuning.xlsx?raw=true) |
-| 8 | [65.33% / 65.33% · Download](test_result/65.33_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_basic.xlsx?raw=true) | [61.67% / 61.67% · Download](test_result/61.67_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference.xlsx?raw=true) | [72.81% / 72.67% · Download](test_result/72.81_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference_finetuning.xlsx?raw=true) |
-| 16 | [23.33% / 23.33% · Download](test_result/23.33_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_basic.xlsx?raw=true) | [16.00% / 16.00% · Download](test_result/16.00_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference.xlsx?raw=true) | [55.42% / 55.33% · Download](test_result/55.42_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference_finetuning.xlsx?raw=true) |
+| 2 | [58.00% · Download](test_result/58.00_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_basic.xlsx?raw=true) | [59.67% · Download](test_result/59.82_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_inference.xlsx?raw=true) | [62.67% · Download](test_result/62.62_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_inference_finetuning.xlsx?raw=true) |
+| 4 | [64.67% · Download](test_result/64.67_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_basic.xlsx?raw=true) | [55.67% · Download](test_result/55.67_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_inference.xlsx?raw=true) | [68.67% · Download](test_result/68.72_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_inference_finetuning.xlsx?raw=true) |
+| 6 | [67.67% · Download](test_result/67.67_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_basic.xlsx?raw=true) | [60.33% · Download](test_result/60.33_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_inference.xlsx?raw=true) | [70.00% · Download](test_result/69.91_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_inference_finetuning.xlsx?raw=true) |
+| 8 | [65.33% · Download](test_result/65.33_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_basic.xlsx?raw=true) | [61.67% · Download](test_result/61.67_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference.xlsx?raw=true) | [72.67% · Download](test_result/72.81_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference_finetuning.xlsx?raw=true) |
+| 16 | [23.33% · Download](test_result/23.33_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_basic.xlsx?raw=true) | [16.00% · Download](test_result/16.00_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference.xlsx?raw=true) | [55.33% · Download](test_result/55.42_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference_finetuning.xlsx?raw=true) |
 
 [Download all 15 Excel files in this table (ZIP, 3.9 MiB)](test_result/TRUSS_94B_MoE_examples_15.zip?raw=true)
