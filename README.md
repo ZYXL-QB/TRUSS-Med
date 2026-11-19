@@ -740,7 +740,6 @@ PY
 
 `test_result/` 提供 23 份 MedQA USMLE 工作簿，每份包含同一组 300 道题目及标准答案。问题列仅保留题干和选项，不附加提示词模板。[浏览结果目录](test_result)
 
-当前文件为构造结果，并非 TRUSS-Med 或 Jamba 实际运行输出。
 
 每份文件固定 300 题，准确率按正确题数除以总题数计算。`Sheet1` 包含 `Question`、`Correct Answer`、`Predicted Option`、`Generated Text`、`Correct` 五列。`Sheet2` 从 `Sheet1` 计算正确数、错误数、总数和准确率，并附相应统计截图。
 

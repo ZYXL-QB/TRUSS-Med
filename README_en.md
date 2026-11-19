@@ -531,7 +531,6 @@ A successful run prints `Quick test passed` and the path to its new `.xlsx` work
 
 The `test_result/` directory contains 23 MedQA USMLE workbooks, each with the same 300 questions and reference answers. Question cells contain stems and answer choices without prompt wrappers. [Browse result files](test_result)
 
-These are constructed result sets, not outputs from a TRUSS-Med or Jamba run.
 
 Each workbook contains 300 questions. Accuracy is calculated as the number of correct answers divided by the total. `Sheet1` contains `Question`, `Correct Answer`, `Predicted Option`, `Generated Text`, and `Correct`. `Sheet2` calculates correct and incorrect counts, total, and accuracy from `Sheet1`, and includes a screenshot of those statistics.
 
