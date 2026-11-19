@@ -477,7 +477,7 @@ python -m pip install modelscope-hub==0.7.1
 
 JAMBA_REPO=zyxl2026/Jamba
 JAMBA_REVISION=master
-JAMBA_DIR=models/Jamba-1.6
+JAMBA_DIR=model/Jamba-1.6
 MINI_MODEL="$JAMBA_DIR/mini"
 LARGE_MODEL="$JAMBA_DIR/large"
 ```
@@ -497,7 +497,7 @@ test -f "$MINI_MODEL/config.json" && test -f "$MINI_MODEL/model.safetensors.inde
 3. 两组使用相同的评测文件、提示、采样参数和训练数据。推理脚本里的 `temperature`、`top_k`、`top_p` 和上下文长度沿用现有设置。后续分别把各组模型目录传给现有 Jamba 脚本。
 
 ```bash
-ABLATION_MODEL=models/AI21-Jamba-Mini-1.6-ablation
+ABLATION_MODEL=model/AI21-Jamba-Mini-1.6-ablation
 # 准备消融副本时执行一次，再编辑副本里的 config.json。
 test ! -e "$ABLATION_MODEL" && cp -a "$MINI_MODEL" "$ABLATION_MODEL"
 ```
@@ -585,18 +585,37 @@ python utils/extract_answer.py --directory jamba/results/recheck
 
 取已预处理的 MedQA Mainland 训练示例前 300 条，验证 Jamba Large 1.6 的 `experts_int8` 推理流程。检索知识已写入 `user` 消息，推理脚本会过滤 `assistant` 消息。 [MedQA 预处理示例](data/MedQA/RAG_MedQA_Mainland_train_500%28example%29.json)
 
-完成[第 1 步的 Jamba 环境配置](#1-实验环境配置)和[第 6 步的 Large 权重下载](#6-基础模型推理)后，在已激活的 Jamba 环境中从仓库根目录执行整段命令。使用 8 张 80 GB GPU，默认选择 `0,1,2,3,4,5,6,7`，也可以预先设置 `CUDA_VISIBLE_DEVICES`。
+完成[第 1 步的 Jamba 环境配置](#1-实验环境配置)后，在已激活的 Jamba 环境中，从仓库根目录按顺序执行下面两段命令。使用 8 张 A800 80GB GPU，默认选择 `0,1,2,3,4,5,6,7`，也可以预先设置 `CUDA_VISIBLE_DEVICES`。测试命令已指向 `model/Jamba-1.6/large/`。
+
+### 1. 下载模型
+
+将企业魔搭仓库的 `large/` 权重下载到 `model/Jamba-1.6/large/`，首次下载约 797.12 GB。下载中断后，重新执行同一段命令继续。 [魔搭模型文件](https://modelscope.cn/models/zyxl2026/Jamba/files) · `https://modelscope.cn/models/zyxl2026/Jamba/files`
+
+```bash
+(
+set -e
+python -m pip install modelscope-hub==0.7.1
+mkdir -p "model/Jamba-1.6"
+ms-hub download zyxl2026/Jamba --revision master \
+    --local-dir "$PWD/model/Jamba-1.6" --include 'large/*'
+test -s "$PWD/model/Jamba-1.6/large/config.json"
+test -s "$PWD/model/Jamba-1.6/large/model.safetensors.index.json"
+)
+```
+
+### 2. 运行快速测试
+
+下载完成后，在同一个仓库根目录执行下面整段命令。
 
 ```bash
 (
 set -e
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}"
-LARGE_MODEL="${LARGE_MODEL:-models/Jamba-1.6/large}"
-if [ ! -s "$LARGE_MODEL/config.json" ]; then
-    printf '%s\n' 'Download Jamba Large in Section 6 or set LARGE_MODEL to its local directory.' >&2
+LARGE_MODEL="$PWD/model/Jamba-1.6/large"
+if [ ! -s "$LARGE_MODEL/config.json" ] || [ ! -s "$LARGE_MODEL/model.safetensors.index.json" ]; then
+    printf '%s\n' 'Download Jamba Large in Step 1 above before running the quick test.' >&2
     exit 1
 fi
-LARGE_MODEL="$(cd "$LARGE_MODEL" && pwd)"
 mkdir -p data/local jamba/results
 RUN_DIR="$(mktemp -d data/local/quick_eval_XXXXXX)"
 RUN_NAME="${RUN_DIR##*/}"

@@ -262,7 +262,7 @@ python -m pip install modelscope-hub==0.7.1
 
 JAMBA_REPO=zyxl2026/Jamba
 JAMBA_REVISION=master
-JAMBA_DIR=models/Jamba-1.6
+JAMBA_DIR=model/Jamba-1.6
 MINI_MODEL="$JAMBA_DIR/mini"
 LARGE_MODEL="$JAMBA_DIR/large"
 ```
@@ -280,7 +280,7 @@ test -f "$MINI_MODEL/config.json" && test -f "$MINI_MODEL/model.safetensors.inde
 Copy the downloaded Mini directory and apply the experiment's `config.json` changes to the copy. Record the original and changed values and use weights compatible with the configuration in each group. Keep training inputs, held-out questions, and inference settings fixed across groups.
 
 ```bash
-ABLATION_MODEL=models/AI21-Jamba-Mini-1.6-ablation
+ABLATION_MODEL=model/AI21-Jamba-Mini-1.6-ablation
 # Run once to create the copy, then edit its config.json.
 test ! -e "$ABLATION_MODEL" && cp -a "$MINI_MODEL" "$ABLATION_MODEL"
 ```
@@ -360,18 +360,37 @@ For each evaluation, record the repository commit, model revision, evaluation sp
 
 Use the first 300 prepared MedQA Mainland training examples to check Jamba Large 1.6 inference with `experts_int8`. The `user` messages contain retrieved knowledge, and the inference script filters out `assistant` messages. [Prepared MedQA examples](data/MedQA/RAG_MedQA_Mainland_train_500%28example%29.json)
 
-Complete the [Jamba environment setup](#1-environment-setup) and [Large model download](#6-baseline-inference) first. Then run the entire block from the repository root in the active Jamba environment. Use eight 80 GB GPUs. The command defaults to `0,1,2,3,4,5,6,7` and respects an existing `CUDA_VISIBLE_DEVICES` setting.
+Complete the [Jamba environment setup](#1-environment-setup), then run the following two blocks in order from the repository root with that environment active. Use eight A800 80GB GPUs. The command defaults to `0,1,2,3,4,5,6,7` and respects an existing `CUDA_VISIBLE_DEVICES` setting. The test command uses the fixed local path `model/Jamba-1.6/large/`.
+
+### 1. Download the model
+
+Download the enterprise ModelScope repository's `large/` weights into `model/Jamba-1.6/large/`. The initial download is approximately 797.12 GB. Rerun the same block to resume an interrupted download. [ModelScope model files](https://modelscope.cn/models/zyxl2026/Jamba/files) · `https://modelscope.cn/models/zyxl2026/Jamba/files`
+
+```bash
+(
+set -e
+python -m pip install modelscope-hub==0.7.1
+mkdir -p "model/Jamba-1.6"
+ms-hub download zyxl2026/Jamba --revision master \
+    --local-dir "$PWD/model/Jamba-1.6" --include 'large/*'
+test -s "$PWD/model/Jamba-1.6/large/config.json"
+test -s "$PWD/model/Jamba-1.6/large/model.safetensors.index.json"
+)
+```
+
+### 2. Run the quick test
+
+After the download completes, run the entire block below from the same repository root.
 
 ```bash
 (
 set -e
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}"
-LARGE_MODEL="${LARGE_MODEL:-models/Jamba-1.6/large}"
-if [ ! -s "$LARGE_MODEL/config.json" ]; then
-    printf '%s\n' 'Download Jamba Large in Section 6 or set LARGE_MODEL to its local directory.' >&2
+LARGE_MODEL="$PWD/model/Jamba-1.6/large"
+if [ ! -s "$LARGE_MODEL/config.json" ] || [ ! -s "$LARGE_MODEL/model.safetensors.index.json" ]; then
+    printf '%s\n' 'Download Jamba Large in Step 1 above before running the quick test.' >&2
     exit 1
 fi
-LARGE_MODEL="$(cd "$LARGE_MODEL" && pwd)"
 mkdir -p data/local jamba/results
 RUN_DIR="$(mktemp -d data/local/quick_eval_XXXXXX)"
 RUN_NAME="${RUN_DIR##*/}"
