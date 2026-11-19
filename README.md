@@ -735,3 +735,11 @@ PY
 ```
 
 通过时打印 `Quick test passed` 和本次生成的 `.xlsx` 路径。通过条件为本次生成的工作簿包含 300 条结果，每条都有模型生成文本。
+
+### 测试结果示例下载
+
+已有实验的结果 Excel 保存在 `test_result/` 中，可下载查看结果表结构、模型回复和计分内容。示例使用的模型与数据集如下。 [浏览结果目录](test_result)
+
+| 模型 | 数据集 | 结果文件 |
+| --- | --- | --- |
+| Jamba Large 1.6 | MedQA USS | [下载 Excel](test_result/jamba16large_inference_AI21-Jamba-Large-1.6_MedQA_USS_test_temperature85_topp75_topk20_20250621_175233.xlsx?raw=true) |

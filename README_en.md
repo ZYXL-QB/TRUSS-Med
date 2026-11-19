@@ -510,3 +510,11 @@ PY
 ```
 
 A successful run prints `Quick test passed` and the path to its new `.xlsx` workbook. The workbook must contain 300 result rows with generated text for each question.
+
+### Download example test results
+
+Workbooks from existing experiments are available in `test_result/`. Download them to inspect the result columns, model responses, and scores. The model and dataset used for each example are listed below. [Browse result files](test_result)
+
+| Model | Dataset | Result file |
+| --- | --- | --- |
+| Jamba Large 1.6 | MedQA USS | [Download Excel](test_result/jamba16large_inference_AI21-Jamba-Large-1.6_MedQA_USS_test_temperature85_topp75_topk20_20250621_175233.xlsx?raw=true) |
