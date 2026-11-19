@@ -326,7 +326,7 @@ test ! -e "$ABLATION_MODEL" && cp -a "$MINI_MODEL" "$ABLATION_MODEL"
 
 ## 6. Baseline Inference
 
-To run fine-tuned inference with the bundled Mini `checkpoint-300`, use the [checkpoint inference command in Section 7](#inference-with-mini-checkpoint-300).
+The bundled Jamba Mini 1.6 `checkpoint-300` is located at `jamba-finetune-data/finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300/`, relative to the repository root. To run fine-tuned inference with this checkpoint, use the [checkpoint inference command in Section 7](#inference-with-mini-checkpoint-300). [Browse checkpoint-300](jamba-finetune-data/finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300)
 
 The Mini baseline uses two visible GPUs.
 

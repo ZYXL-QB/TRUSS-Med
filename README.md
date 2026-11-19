@@ -543,7 +543,7 @@ test ! -e "$ABLATION_MODEL" && cp -a "$MINI_MODEL" "$ABLATION_MODEL"
 
 ## 6. 基础模型推理
 
-使用仓库提供的 Mini `checkpoint-300` 运行微调后推理时，执行[第 7 步的检查点推理命令](#使用-mini-checkpoint-300-推理)。
+仓库提供的 Jamba Mini 1.6 `checkpoint-300` 位于 `jamba-finetune-data/finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300/`，路径相对于仓库根目录。使用该检查点运行微调后推理时，执行[第 7 步的检查点推理命令](#使用-mini-checkpoint-300-推理)。 [查看 checkpoint-300 目录](jamba-finetune-data/finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300)
 
 先用原始配置运行 Mini 推理。 [jamba16mini_inference.py](jamba/jamba16mini_inference.py)
 
