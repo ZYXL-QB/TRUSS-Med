@@ -326,6 +326,8 @@ test ! -e "$ABLATION_MODEL" && cp -a "$MINI_MODEL" "$ABLATION_MODEL"
 
 ## 6. Baseline Inference
 
+To run fine-tuned inference with the bundled Mini `checkpoint-300`, use the [checkpoint inference command in Section 7](#inference-with-mini-checkpoint-300).
+
 The Mini baseline uses two visible GPUs.
 
 ```bash
@@ -380,6 +382,36 @@ Use the ablation group's adapter for its inference run.
 ABLATION_PEFT="$(basename "$ABLATION_MODEL")/$TRAIN_NAME"
 (cd jamba && python jamba16mini_inference_by_finetune.py "../$ABLATION_MODEL" "$EVAL_DATA" "$ABLATION_PEFT")
 ```
+
+### Inference with Mini checkpoint-300
+
+The repository includes a Jamba Mini 1.6 LoRA checkpoint at `jamba-finetune-data/finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300/`. Load it with the Mini base weights downloaded in Section 4 to run fine-tuned inference directly. [checkpoint-300 files](jamba-finetune-data/finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300)
+
+Complete the Jamba environment setup in Section 1, download Mini in Section 4, and install Git LFS. Then run the entire block below from the repository root. The checkpoint records PEFT `0.15.2`, so the command installs that version for loading. This example uses two GPUs and the 300 bundled MedMCQA evaluation examples. The third argument, `MINI_CHECKPOINT`, is relative to `jamba-finetune-data/` and must include the `finetune_result/` prefix. [Git LFS installation](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage)
+
+```bash
+(
+set -e
+python -m pip install peft==0.15.2
+git lfs install --local
+
+MINI_MODEL="$PWD/model/Jamba-1.6/mini"
+MINI_CHECKPOINT="finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300"
+EVAL_DATA="MedMCQA/result/Med_MCQA_test.json"
+
+git lfs pull --include="jamba-finetune-data/$MINI_CHECKPOINT/*" --exclude=""
+test -s "$MINI_MODEL/config.json"
+test -s "$MINI_MODEL/model.safetensors.index.json"
+test -s "jamba-finetune-data/$MINI_CHECKPOINT/adapter_config.json"
+test -s "jamba-finetune-data/$MINI_CHECKPOINT/adapter_model.safetensors"
+
+export CUDA_VISIBLE_DEVICES=0,1
+mkdir -p jamba/results
+(cd jamba && python jamba16mini_inference_by_finetune.py "$MINI_MODEL" "$EVAL_DATA" "$MINI_CHECKPOINT")
+)
+```
+
+The script creates or reuses `merged/` inside the selected checkpoint, merges the Mini base weights with the LoRA adapter, and runs inference. Workbooks are written to `jamba/results/` with `checkpoint-300` in the filename.
 
 ## 8. Evaluation Outputs
 

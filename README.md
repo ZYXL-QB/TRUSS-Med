@@ -543,6 +543,8 @@ test ! -e "$ABLATION_MODEL" && cp -a "$MINI_MODEL" "$ABLATION_MODEL"
 
 ## 6. 基础模型推理
 
+使用仓库提供的 Mini `checkpoint-300` 运行微调后推理时，执行[第 7 步的检查点推理命令](#使用-mini-checkpoint-300-推理)。
+
 先用原始配置运行 Mini 推理。 [jamba16mini_inference.py](jamba/jamba16mini_inference.py)
 
 ```bash
@@ -603,6 +605,36 @@ BASE_PEFT="$(basename "$MINI_MODEL")/$TRAIN_NAME"
 ABLATION_PEFT="$(basename "$ABLATION_MODEL")/$TRAIN_NAME"
 (cd jamba && python jamba16mini_inference_by_finetune.py "../$ABLATION_MODEL" "$EVAL_DATA" "$ABLATION_PEFT")
 ```
+
+### 使用 Mini checkpoint-300 推理
+
+仓库提供 Jamba Mini 1.6 的 LoRA 微调检查点，位于 `jamba-finetune-data/finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300/`。可将它与第 4 步下载的 Mini 基座权重一起加载，直接运行微调后推理。 [checkpoint-300 文件](jamba-finetune-data/finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300)
+
+完成第 1 步的 Jamba 环境配置、第 4 步的 Mini 下载，并安装 Git LFS 后，从仓库根目录执行下方整段命令。该检查点记录的 PEFT 版本为 `0.15.2`，命令中使用同一版本加载。示例使用 2 张 GPU 和仓库内的 300 条 MedMCQA 评测样本。第三个参数 `MINI_CHECKPOINT` 相对于 `jamba-finetune-data/`，因此需要保留 `finetune_result/` 前缀。 [Git LFS 安装说明](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage)
+
+```bash
+(
+set -e
+python -m pip install peft==0.15.2
+git lfs install --local
+
+MINI_MODEL="$PWD/model/Jamba-1.6/mini"
+MINI_CHECKPOINT="finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300"
+EVAL_DATA="MedMCQA/result/Med_MCQA_test.json"
+
+git lfs pull --include="jamba-finetune-data/$MINI_CHECKPOINT/*" --exclude=""
+test -s "$MINI_MODEL/config.json"
+test -s "$MINI_MODEL/model.safetensors.index.json"
+test -s "jamba-finetune-data/$MINI_CHECKPOINT/adapter_config.json"
+test -s "jamba-finetune-data/$MINI_CHECKPOINT/adapter_model.safetensors"
+
+export CUDA_VISIBLE_DEVICES=0,1
+mkdir -p jamba/results
+(cd jamba && python jamba16mini_inference_by_finetune.py "$MINI_MODEL" "$EVAL_DATA" "$MINI_CHECKPOINT")
+)
+```
+
+脚本会在所选检查点下创建或复用 `merged/`，合并 Mini 基座与 LoRA 权重后执行推理。结果写入 `jamba/results/`，文件名包含 `checkpoint-300`。
 
 ## 8. 评测结果与核验
 

@@ -1,3 +1,7 @@
 # Store MedMCQA files above GitHub's 100 MB regular-Git limit with Git LFS.
 data/MedMCQA/data/MedMCQA_train.json filter=lfs diff=lfs merge=lfs -text
 data/MedMCQA/data/train.json filter=lfs diff=lfs merge=lfs -text
+jamba-finetune-data/finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300/*.safetensors filter=lfs diff=lfs merge=lfs -text
+jamba-finetune-data/finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300/*.pt filter=lfs diff=lfs merge=lfs -text
+jamba-finetune-data/finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300/*.pth filter=lfs diff=lfs merge=lfs -text
+jamba-finetune-data/finetune_result/AI21-Jamba-Mini-1.6/RAG_MedQA_USS_test_train/checkpoint-300/*.bin filter=lfs diff=lfs merge=lfs -text
