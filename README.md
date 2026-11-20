@@ -738,7 +738,7 @@ PY
 
 ### 测试结果文件下载
 
-`test_result/` 提供 23 份 MedQA USMLE 工作簿，每份包含同一组 300 道题目及标准答案。问题列仅保留题干和选项，不附加提示词模板。[浏览结果目录](test_result)
+`test_result/` 提供 23 份工作簿：8 份 K:T:S 配置结果采用 MedQA USMLE，15 份 94B MoE 专家数量结果采用 MedMCQA。每份包含 300 道题目及标准答案，同一数据集组内题目保持一致。[浏览结果目录](test_result)
 
 
 每份文件固定 300 题，准确率按正确题数除以总题数计算。`Sheet1` 包含 `Question`、`Correct Answer`、`Predicted Option`、`Generated Text`、`Correct` 五列。`Sheet2` 从 `Sheet1` 计算正确数、错误数、总数和准确率，并附相应统计截图。
@@ -762,14 +762,16 @@ PY
 
 #### 94B MoE 专家数量结果（15 份）
 
-这 15 份文件使用上述同一组 MedQA USMLE 题目。模型标识为 `TRUSS-Med-94B`；`k` 表示每个 token 激活的专家数量，与采样参数 `top_k` 不同。下载链接列出按 300 题统计的实际准确率。
+这 15 份文件使用同一组 300 道 MedMCQA 题目及标准答案。模型标识为 `TRUSS-Med-94B`；`k` 表示每个 token 激活的专家数量，与采样参数 `top_k` 不同。下载链接列出按 300 题统计的实际准确率。
+
+基础模型的 5 份文件包含题目和选项提示；检索增强推理、检索增强推理与微调共 10 份文件，在 `Question` 的 `#Medical Knowledge#` 段落中另附检索到的医学知识。
 
 | 每个 token 激活专家数 k | 基础模型（实际准确率） | 检索增强推理（实际准确率） | 检索增强推理与微调（实际准确率） |
 | ---: | --- | --- | --- |
-| 2 | [58.00% · 下载](test_result/58.00_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_basic.xlsx?raw=true) | [59.67% · 下载](test_result/59.82_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_inference.xlsx?raw=true) | [62.67% · 下载](test_result/62.62_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_inference_finetuning.xlsx?raw=true) |
-| 4 | [64.67% · 下载](test_result/64.67_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_basic.xlsx?raw=true) | [55.67% · 下载](test_result/55.67_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_inference.xlsx?raw=true) | [68.67% · 下载](test_result/68.72_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_inference_finetuning.xlsx?raw=true) |
-| 6 | [67.67% · 下载](test_result/67.67_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_basic.xlsx?raw=true) | [60.33% · 下载](test_result/60.33_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_inference.xlsx?raw=true) | [70.00% · 下载](test_result/69.91_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_inference_finetuning.xlsx?raw=true) |
-| 8 | [65.33% · 下载](test_result/65.33_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_basic.xlsx?raw=true) | [61.67% · 下载](test_result/61.67_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference.xlsx?raw=true) | [72.67% · 下载](test_result/72.81_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference_finetuning.xlsx?raw=true) |
-| 16 | [23.33% · 下载](test_result/23.33_predict_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_basic.xlsx?raw=true) | [16.00% · 下载](test_result/16.00_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference.xlsx?raw=true) | [55.33% · 下载](test_result/55.42_predict_RAG_MedQA_USMLE_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference_finetuning.xlsx?raw=true) |
+| 2 | [58.00% · 下载](test_result/58.00_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_basic.xlsx?raw=true) | [59.67% · 下载](test_result/59.82_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_inference.xlsx?raw=true) | [62.67% · 下载](test_result/62.62_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_2_stage_inference_finetuning.xlsx?raw=true) |
+| 4 | [64.67% · 下载](test_result/64.67_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_basic.xlsx?raw=true) | [55.67% · 下载](test_result/55.67_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_inference.xlsx?raw=true) | [68.67% · 下载](test_result/68.72_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_4_stage_inference_finetuning.xlsx?raw=true) |
+| 6 | [67.67% · 下载](test_result/67.67_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_basic.xlsx?raw=true) | [60.33% · 下载](test_result/60.33_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_inference.xlsx?raw=true) | [70.00% · 下载](test_result/69.91_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_6_stage_inference_finetuning.xlsx?raw=true) |
+| 8 | [65.33% · 下载](test_result/65.33_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_basic.xlsx?raw=true) | [61.67% · 下载](test_result/61.67_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference.xlsx?raw=true) | [72.67% · 下载](test_result/72.81_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_8_stage_inference_finetuning.xlsx?raw=true) |
+| 16 | [23.33% · 下载](test_result/23.33_predict_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_basic.xlsx?raw=true) | [16.00% · 下载](test_result/16.00_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference.xlsx?raw=true) | [55.33% · 下载](test_result/55.42_predict_RAG_MedMCQA_test_use_model_TRUSS-Med-94B_experts_per_token_16_stage_inference_finetuning.xlsx?raw=true) |
 
-[下载本表全部 15 个 Excel（ZIP，3.9 MiB）](test_result/TRUSS_94B_MoE_examples_15.zip?raw=true)
+[下载本表全部 15 个 Excel（ZIP，7.5 MiB）](test_result/TRUSS_94B_MoE_examples_15.zip?raw=true)
